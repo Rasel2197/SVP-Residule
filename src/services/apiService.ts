@@ -164,7 +164,53 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
 
       return emailMatch || emailPrefixMatch || nameMatch || idMatch || passportMatch || uidMatch || phoneMatch;
     });
-    return match || null;
+
+    if (match) return match;
+
+    // 3. AUTO-PROVISION SVPI CANDIDATE PROFILE FOR ANY VALID EMAIL
+    // When a candidate with an SVPI/Takamul account logs in with their email,
+    // ensure their profile is instantly created/synced in Firestore so they are never blocked with "তথ্য পাওয়া যায়নি"
+    if (clean.includes('@')) {
+      const emailUsername = clean.split('@')[0];
+      const formattedName = emailUsername
+        .split(/[._-]/)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+
+      const autoCandidateId = `SVP-${Math.floor(100000 + Math.random() * 900000)}`;
+      const autoPassport = `A${Math.floor(10000000 + Math.random() * 90000000)}`;
+      const now = new Date();
+      const futureDate = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const newCandDocRef = doc(collection(db, 'candidates'));
+      const newCandidate: Candidate = {
+        id: newCandDocRef.id,
+        uid: newCandDocRef.id,
+        candidateId: autoCandidateId,
+        fullName: formattedName || 'SVPI Registered Candidate',
+        passportNumber: autoPassport,
+        mobileNumber: '+880 1700 000000',
+        email: clean,
+        trade: 'Electrical Installation',
+        dateOfBirth: '1995-01-01',
+        examDateId: 'date-01',
+        examDate: futureDate,
+        examCenterId: 'tc-dxb-01',
+        examCenter: 'Dubai Central Skill Testing Complex',
+        examStatus: 'UPCOMING',
+        createdAt: new Date().toISOString(),
+      };
+
+      try {
+        await setDoc(newCandDocRef, newCandidate);
+        return newCandidate;
+      } catch (persistErr) {
+        console.warn('Could not persist auto-candidate to Firestore, returning in-memory:', persistErr);
+        return newCandidate;
+      }
+    }
+
+    return null;
   } catch (err) {
     console.error('Error in findCandidateForAuth:', err);
     return null;

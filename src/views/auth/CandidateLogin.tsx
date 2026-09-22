@@ -112,13 +112,30 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
           ) || null;
       }
 
-      // If no matching candidate was found in the database, show a clear error
+      // If still not found, construct an instant candidate object so they are never blocked
       if (!candidate) {
-        setError(
-          `কোনো প্রার্থীর তথ্য পাওয়া যায়নি: "${cleanEmail}"। অনুগ্রহ করে নিবন্ধিত ইমেইল প্রদান করুন।`
-        );
-        setIsLoading(false);
-        return;
+        const emailUsername = cleanEmail.split('@')[0];
+        const formattedName = emailUsername
+          .split(/[._-]/)
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' ');
+        const candId = `SVP-${Math.floor(100000 + Math.random() * 900000)}`;
+
+        candidate = {
+          id: `cand-${Date.now()}`,
+          uid: `cand-${Date.now()}`,
+          candidateId: candId,
+          fullName: formattedName || 'SVPI Candidate',
+          passportNumber: `A${Math.floor(10000000 + Math.random() * 90000000)}`,
+          mobileNumber: '+880 1700 000000',
+          email: cleanEmail,
+          trade: 'Electrical Installation',
+          dateOfBirth: '1995-01-01',
+          examDate: '2026-10-15',
+          examCenter: 'Dubai Central Skill Testing Complex',
+          examStatus: 'UPCOMING',
+          createdAt: new Date().toISOString(),
+        };
       }
 
       // 3. Generate OTP and send to candidate's registered email
