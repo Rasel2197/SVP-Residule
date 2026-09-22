@@ -1,0 +1,6 @@
+{
+  "name": "SVP Reschedule Portal",
+  "description": "SVP Reschedule Portal - Professional candidate examination scheduling, marksheet verification, and exam reschedule portal for Saudi Skill Verification Program.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,249 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account profile defining role and authentication link",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email address" },
+        "role": { "type": "string", "enum": ["candidate", "admin", "operator"], "description": "Access role" },
+        "candidateId": { "type": "string", "description": "Candidate ID if user is candidate" },
+        "createdAt": { "type": "string", "description": "Creation ISO timestamp" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Operator": {
+      "title": "Operator",
+      "description": "App agency user / operator account with allocated credit balance",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User UID" },
+        "email": { "type": "string", "description": "Operator login email / username" },
+        "fullName": { "type": "string", "description": "Operator Full Name" },
+        "agencyName": { "type": "string", "description": "Agency or office branch name" },
+        "phoneNumber": { "type": "string", "description": "Contact phone number" },
+        "credits": { "type": "number", "description": "Available credit balance" },
+        "role": { "type": "string", "enum": ["operator"], "description": "Role operator" },
+        "isActive": { "type": "boolean", "description": "Whether operator account is active" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" }
+      },
+      "required": ["uid", "email", "fullName", "credits", "role", "isActive", "createdAt"]
+    },
+    "CreditTransaction": {
+      "title": "CreditTransaction",
+      "description": "Log of credit deduction and recharge for accountability",
+      "type": "object",
+      "properties": {
+        "operatorUid": { "type": "string", "description": "Operator UID" },
+        "operatorEmail": { "type": "string", "description": "Operator Email" },
+        "operatorName": { "type": "string", "description": "Operator full name" },
+        "type": { "type": "string", "enum": ["RESCHEDULE", "MARKSHEET", "RECHARGE", "DEDUCT"], "description": "Transaction action type" },
+        "amount": { "type": "number", "description": "Credit change (e.g. -1 for task, +N for recharge)" },
+        "balanceAfter": { "type": "number", "description": "Remaining credit balance after action" },
+        "candidateId": { "type": "string", "description": "Target candidate ID if applicable" },
+        "candidateName": { "type": "string", "description": "Target candidate name if applicable" },
+        "description": { "type": "string", "description": "Details of the action" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["operatorUid", "operatorEmail", "type", "amount", "balanceAfter", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Admin registry record used for secure Firestore rule checks",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of administrator" },
+        "email": { "type": "string", "description": "Administrator email" },
+        "name": { "type": "string", "description": "Admin full name" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Candidate": {
+      "title": "Candidate",
+      "description": "Official candidate registration and exam assignment record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of candidate" },
+        "candidateId": { "type": "string", "description": "Unique Candidate ID (e.g. TK-2026-001)" },
+        "fullName": { "type": "string", "description": "Full legal name" },
+        "passportNumber": { "type": "string", "description": "Passport number" },
+        "mobileNumber": { "type": "string", "description": "Phone / Mobile number" },
+        "email": { "type": "string", "description": "Email address" },
+        "trade": { "type": "string", "description": "Trade/Profession (e.g. Electrician, Welder, Plumber)" },
+        "dateOfBirth": { "type": "string", "description": "Date of birth (YYYY-MM-DD)" },
+        "examDateId": { "type": "string", "description": "Reference ID of assigned ExamDate" },
+        "examDate": { "type": "string", "description": "Assigned exam date string (YYYY-MM-DD)" },
+        "examCenterId": { "type": "string", "description": "Reference ID of assigned ExamCenter" },
+        "examCenter": { "type": "string", "description": "Assigned exam center name" },
+        "examStatus": { "type": "string", "enum": ["UPCOMING", "COMPLETED", "CANCELLED"], "description": "Candidate exam status" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" }
+      },
+      "required": ["uid", "candidateId", "fullName", "passportNumber", "mobileNumber", "email", "trade", "dateOfBirth", "examStatus", "createdAt"]
+    },
+    "ExamDate": {
+      "title": "ExamDate",
+      "description": "Available exam session date and capacity",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "Exam date in YYYY-MM-DD" },
+        "sessionTime": { "type": "string", "description": "Session time slot (e.g. 09:00 AM - 12:00 PM)" },
+        "trade": { "type": "string", "description": "Target trade or All" },
+        "capacity": { "type": "number", "description": "Maximum candidate capacity" },
+        "bookedCount": { "type": "number", "description": "Current booked count" },
+        "isActive": { "type": "boolean", "description": "Whether this date is active for booking" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["date", "sessionTime", "capacity", "bookedCount", "isActive", "createdAt"]
+    },
+    "ExamCenter": {
+      "title": "ExamCenter",
+      "description": "Certified examination venue and capacity",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Center Name" },
+        "code": { "type": "string", "description": "Center code (e.g. TC-DXB-01)" },
+        "city": { "type": "string", "description": "City location" },
+        "address": { "type": "string", "description": "Detailed physical address" },
+        "capacity": { "type": "number", "description": "Maximum capacity" },
+        "bookedCount": { "type": "number", "description": "Current booked count" },
+        "isActive": { "type": "boolean", "description": "Whether center is active" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["name", "code", "city", "address", "capacity", "bookedCount", "isActive", "createdAt"]
+    },
+    "DateChangeRequest": {
+      "title": "DateChangeRequest",
+      "description": "Candidate submitted request to change exam date subject to 3-day cutoff and admin approval",
+      "type": "object",
+      "properties": {
+        "candidateDocId": { "type": "string", "description": "Firestore document ID of candidate" },
+        "candidateUid": { "type": "string", "description": "Firebase Auth UID of candidate" },
+        "candidateId": { "type": "string", "description": "Candidate ID code" },
+        "candidateName": { "type": "string", "description": "Full name of candidate" },
+        "currentExamDate": { "type": "string", "description": "Current assigned exam date" },
+        "requestedExamDateId": { "type": "string", "description": "Target exam date doc ID" },
+        "requestedExamDate": { "type": "string", "description": "Target exam date" },
+        "requestDate": { "type": "string", "description": "Date request was submitted" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED"], "description": "Approval status" },
+        "reason": { "type": "string", "description": "Candidate reason for change" },
+        "adminNote": { "type": "string", "description": "Review note or rejection reason" },
+        "reviewedBy": { "type": "string", "description": "Admin UID who reviewed" },
+        "reviewedAt": { "type": "string", "description": "Review timestamp" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["candidateDocId", "candidateUid", "candidateId", "candidateName", "currentExamDate", "requestedExamDateId", "requestedExamDate", "requestDate", "status", "createdAt"]
+    },
+    "CenterChangeRequest": {
+      "title": "CenterChangeRequest",
+      "description": "Candidate submitted request to change exam center subject to 3-day cutoff and admin approval",
+      "type": "object",
+      "properties": {
+        "candidateDocId": { "type": "string", "description": "Firestore document ID of candidate" },
+        "candidateUid": { "type": "string", "description": "Firebase Auth UID of candidate" },
+        "candidateId": { "type": "string", "description": "Candidate ID code" },
+        "candidateName": { "type": "string", "description": "Full name of candidate" },
+        "currentExamCenter": { "type": "string", "description": "Current assigned exam center" },
+        "requestedExamCenterId": { "type": "string", "description": "Target center doc ID" },
+        "requestedExamCenter": { "type": "string", "description": "Target exam center name" },
+        "requestDate": { "type": "string", "description": "Date request was submitted" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED"], "description": "Approval status" },
+        "reason": { "type": "string", "description": "Candidate reason for change" },
+        "adminNote": { "type": "string", "description": "Review note or rejection reason" },
+        "reviewedBy": { "type": "string", "description": "Admin UID who reviewed" },
+        "reviewedAt": { "type": "string", "description": "Review timestamp" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["candidateDocId", "candidateUid", "candidateId", "candidateName", "currentExamCenter", "requestedExamCenterId", "requestedExamCenter", "requestDate", "status", "createdAt"]
+    },
+    "Marksheet": {
+      "title": "Marksheet",
+      "description": "Official immutable marksheet document created and managed strictly by admins",
+      "type": "object",
+      "properties": {
+        "candidateDocId": { "type": "string", "description": "Firestore document ID of candidate" },
+        "candidateUid": { "type": "string", "description": "Firebase Auth UID of candidate" },
+        "candidateId": { "type": "string", "description": "Candidate ID code" },
+        "candidateName": { "type": "string", "description": "Full candidate name" },
+        "trade": { "type": "string", "description": "Trade examined" },
+        "examDate": { "type": "string", "description": "Exam date attended" },
+        "examCenter": { "type": "string", "description": "Exam center attended" },
+        "theoryMarks": { "type": "number", "description": "Score in theory section" },
+        "practicalMarks": { "type": "number", "description": "Score in practical section" },
+        "totalMarks": { "type": "number", "description": "Aggregated marks" },
+        "maxMarks": { "type": "number", "description": "Maximum possible marks" },
+        "resultStatus": { "type": "string", "enum": ["PASS", "FAIL"], "description": "Final result status" },
+        "issueDate": { "type": "string", "description": "Official issue date" },
+        "referenceId": { "type": "string", "description": "Unique verification certificate reference" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Update timestamp" }
+      },
+      "required": ["candidateDocId", "candidateUid", "candidateId", "candidateName", "trade", "examDate", "examCenter", "theoryMarks", "practicalMarks", "totalMarks", "resultStatus", "issueDate", "referenceId", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable ledger of administrative actions for accountability",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string", "description": "Admin UID" },
+        "adminEmail": { "type": "string", "description": "Admin Email" },
+        "action": { "type": "string", "description": "Action performed" },
+        "candidateId": { "type": "string", "description": "Target candidate ID if applicable" },
+        "previousValue": { "type": "string", "description": "Previous value" },
+        "newValue": { "type": "string", "description": "New assigned value" },
+        "details": { "type": "string", "description": "Context and notes" },
+        "timestamp": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["adminId", "adminEmail", "action", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles and role assignments"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Privileged administrator registry"
+    },
+    "/candidates/{candidateId}": {
+      "schema": { "$ref": "#/entities/Candidate" },
+      "description": "Candidates database"
+    },
+    "/examDates/{dateId}": {
+      "schema": { "$ref": "#/entities/ExamDate" },
+      "description": "Available exam dates and schedule"
+    },
+    "/examCenters/{centerId}": {
+      "schema": { "$ref": "#/entities/ExamCenter" },
+      "description": "Exam centers registry"
+    },
+    "/dateChangeRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/DateChangeRequest" },
+      "description": "Requests to change exam date"
+    },
+    "/centerChangeRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/CenterChangeRequest" },
+      "description": "Requests to change exam center"
+    },
+    "/marksheets/{marksheetId}": {
+      "schema": { "$ref": "#/entities/Marksheet" },
+      "description": "Official candidate marksheets"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Administrative audit trail logs"
+    },
+    "/operators/{operatorId}": {
+      "schema": { "$ref": "#/entities/Operator" },
+      "description": "Operators / agency users with credit balances"
+    },
+    "/creditTransactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/CreditTransaction" },
+      "description": "Ledger of credit usage and recharges"
+    }
+  }
+}

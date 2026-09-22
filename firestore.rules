@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Test connection doc
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Admins Registry
+    match /admins/{adminId} {
+      allow read, write: if true;
+    }
+
+    // Candidates Collection
+    match /candidates/{candidateDocId} {
+      allow read, write: if true;
+    }
+
+    // Exam Dates (Schedule)
+    match /examDates/{dateId} {
+      allow read, write: if true;
+    }
+
+    // Exam Centers
+    match /examCenters/{centerId} {
+      allow read, write: if true;
+    }
+
+    // Date Change Requests
+    match /dateChangeRequests/{requestId} {
+      allow read, write: if true;
+    }
+
+    // Center Change Requests
+    match /centerChangeRequests/{requestId} {
+      allow read, write: if true;
+    }
+
+    // Marksheets (Public verification and administrative recording)
+    match /marksheets/{marksheetId} {
+      allow read, write: if true;
+    }
+
+    // Audit Logs
+    match /auditLogs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Operators / Sub-users
+    match /operators/{operatorId} {
+      allow read, write: if true;
+    }
+
+    // Credit Transactions
+    match /creditTransactions/{transactionId} {
+      allow read, write: if true;
+    }
+
+    // Fallback for any other document in database
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
