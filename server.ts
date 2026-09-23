@@ -22,10 +22,11 @@ async function startServer() {
     console.log(`[RESIDULE SVP] Dispatching OTP to ${email}`);
 
     try {
-      const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
+      const smtpHost = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
       const smtpPort = Number(process.env.SMTP_PORT) || 587;
-      const smtpUser = process.env.SMTP_USER;
-      const smtpPass = process.env.SMTP_PASS;
+      const smtpUser = (process.env.SMTP_USER || "raselahmed231956@gmail.com").trim();
+      const rawPass = process.env.SMTP_PASS || "osvteaaaneqvgukv";
+      const smtpPass = rawPass.replace(/\s+/g, '').trim();
 
       let emailSent = false;
 

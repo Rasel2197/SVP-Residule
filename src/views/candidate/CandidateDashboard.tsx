@@ -31,15 +31,16 @@ import {
 import { Marksheet, ExamCenter, ExamDate, Candidate } from '../../types';
 import { generateMarksheetPDF, generateRescheduleSlipPDF } from '../../utils/pdfGenerator';
 import { useToast } from '../../components/Toast';
+import { BANGLADESH_TAKAMUL_TTCS, BangladeshTTC } from '../../data/bangladeshTTCs';
 
 const POPULAR_TRADES = [
-  { id: 'Electrical Installation', name: 'Electrical Installation', bangla: 'ইলেকট্রিক্যাল ইন্সটলেশন', category: 'Construction & MEP' },
-  { id: 'Plumbing & Pipefitting', name: 'Plumbing & Pipefitting', bangla: 'প্লাম্বিং ও পাইপফিটিং', category: 'Sanitary & Utilities' },
-  { id: 'HVAC & Refrigeration', name: 'HVAC & Refrigeration', bangla: 'এইচভিএসি ও এয়ার কন্ডিশনিং', category: 'Mechanical Systems' },
-  { id: 'Welding & Metal Fabrication', name: 'Welding & Metal Fabrication', bangla: 'ওয়েল্ডিং ও মেটাল ফেব্রিকেশন', category: 'Heavy Fabrication' },
-  { id: 'Automotive Mechanics', name: 'Automotive Mechanics', bangla: 'অটোমোটিভ মেকানিক্স', category: 'Automotive Engineering' },
-  { id: 'Industrial Carpentry', name: 'Industrial Carpentry', bangla: 'কার্পেন্ট্রি / কাঠের কাজ', category: 'Structural Carpentry' },
-  { id: 'Masonry & Tile Setting', name: 'Masonry & Tile Setting', bangla: 'ম্যাসনরি / রাজমিস্ত্রি কাজ', category: 'Civil Works' },
+  { id: 'Electrical Installation', name: 'Electrical Installation', bangla: 'ইলেকট্রিক্যাল ইন্সটলেশন (Electrical)', category: 'Construction & MEP' },
+  { id: 'Plumbing & Pipefitting', name: 'Plumbing & Pipefitting', bangla: 'প্লাম্বিং ও পাইপফিটিং (Plumbing)', category: 'Sanitary & Utilities' },
+  { id: 'HVAC & Refrigeration', name: 'HVAC & Refrigeration', bangla: 'এইচভিএসি ও এয়ার কন্ডিশনিং (HVAC/AC)', category: 'Mechanical Systems' },
+  { id: 'Welding & Metal Fabrication', name: 'Welding & Metal Fabrication', bangla: 'ওয়েল্ডিং ও মেটাল ফেব্রিকেশন (Welding)', category: 'Heavy Fabrication' },
+  { id: 'Automotive Mechanics', name: 'Automotive Mechanics', bangla: 'অটোমোটিভ মেকানিক্স (Automotive)', category: 'Automotive Engineering' },
+  { id: 'Industrial Carpentry', name: 'Industrial Carpentry', bangla: 'কার্পেন্ট্রি / কাঠের কাজ (Carpentry)', category: 'Structural Carpentry' },
+  { id: 'Masonry & Tile Setting', name: 'Masonry & Tile Setting', bangla: 'ম্যাসনরি / রাজমিস্ত্রি কাজ (Masonry)', category: 'Civil Works' },
 ];
 
 export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void }> = () => {
@@ -108,41 +109,7 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
 
   // Default fallback centers if Firestore has none seeded yet
   function getDefaultCenters(): ExamCenter[] {
-    return [
-      {
-        id: 'tc-dxb-01',
-        name: 'Dubai Central Skill Testing Complex',
-        code: 'TC-DXB-01',
-        city: 'Dubai',
-        address: 'Al Quoz Industrial Area 3, Street 18B, Dubai, UAE',
-        capacity: 120,
-        bookedCount: 65,
-        isActive: true,
-        createdAt: '2026-01-01',
-      },
-      {
-        id: 'tc-auh-02',
-        name: 'Abu Dhabi Vocational Assessment Center',
-        code: 'TC-AUH-02',
-        city: 'Abu Dhabi',
-        address: 'Mussafah Sector M-14, Behind ICAD 1, Abu Dhabi, UAE',
-        capacity: 100,
-        bookedCount: 42,
-        isActive: true,
-        createdAt: '2026-01-01',
-      },
-      {
-        id: 'tc-shj-03',
-        name: 'Sharjah Technical Examination Hub',
-        code: 'TC-SHJ-03',
-        city: 'Sharjah',
-        address: 'Industrial Area 11, Wasit Suburb, Sharjah, UAE',
-        capacity: 80,
-        bookedCount: 38,
-        isActive: true,
-        createdAt: '2026-01-01',
-      },
-    ];
+    return BANGLADESH_TAKAMUL_TTCS;
   }
 
   // Default fallback dates with vacant seats
@@ -681,54 +648,87 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
                 <div className="lg:col-span-7 space-y-6">
                   {/* Step 2: Available Testing Centers for Selected Profession */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-[#0B3B3C] text-white text-xs font-bold flex items-center justify-center">
-                        2
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[#0B3B3C] text-white text-xs font-bold flex items-center justify-center">
+                          2
+                        </span>
+                        <h3 className="font-black text-slate-900 text-sm uppercase tracking-wider">
+                          এই পেশার পরীক্ষা কেন্দ্রসমূহ / Centers for {selectedTrade}
+                        </h3>
+                      </div>
+                      <span className="text-[11px] font-bold text-slate-500">
+                        {
+                          allCenters.filter((c: any) =>
+                            !c.supportedTrades || c.supportedTrades.includes(selectedTrade)
+                          ).length
+                        } টি টিটিসি উপলব্ধ
                       </span>
-                      <h3 className="font-black text-slate-900 text-sm uppercase tracking-wider">
-                        এই পেশার পরীক্ষা কেন্দ্রসমূহ / Available Centers for {selectedTrade}
-                      </h3>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Locations hosting assessments for <strong>{selectedTrade}</strong>:
+                      বাংলাদেশে যেসব সরকারি ও বেসরকারি টিটিসিতে <strong>{selectedTrade}</strong> পরীক্ষার ব্যবস্থা আছে:
                     </p>
 
-                    <div className="space-y-2">
-                      {allCenters.map((center) => {
-                        const isSelected = selectedCenter?.id === center.id;
-                        return (
-                          <button
-                            key={center.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCenter(center);
-                              setSelectedDate(null); // reset date selection to choose from vacant dates of new center
-                            }}
-                            className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start justify-between cursor-pointer ${
-                              isSelected
-                                ? 'bg-teal-50 border-[#0B3B3C] ring-2 ring-[#0B3B3C] shadow-xs'
-                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                            }`}
-                          >
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-slate-900">{center.name}</span>
-                                <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-semibold">
-                                  {center.code}
-                                </span>
+                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                      {allCenters
+                        .filter((center: any) => {
+                          if (center.supportedTrades && Array.isArray(center.supportedTrades)) {
+                            return center.supportedTrades.includes(selectedTrade);
+                          }
+                          return true;
+                        })
+                        .map((center: any) => {
+                          const isSelected = selectedCenter?.id === center.id;
+                          const isGov = center.type === 'GOVERNMENT' || !center.type;
+                          return (
+                            <button
+                              key={center.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCenter(center);
+                                setSelectedDate(null); // reset date selection to choose from vacant dates of new center
+                              }}
+                              className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start justify-between cursor-pointer ${
+                                isSelected
+                                  ? 'bg-teal-50 border-[#0B3B3C] ring-2 ring-[#0B3B3C] shadow-xs'
+                                  : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-bold text-slate-900">{center.name}</span>
+                                  <span
+                                    className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
+                                      isGov
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                        : 'bg-amber-100 text-amber-800 border border-amber-300'
+                                    }`}
+                                  >
+                                    {isGov ? 'সরকারি (GOVT)' : 'বেসরকারি (PRIVATE)'}
+                                  </span>
+                                  <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-semibold">
+                                    {center.code}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-600 flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  <span>
+                                    {center.address} {center.division ? `(${center.division} বিভাগ)` : `(${center.city})`}
+                                  </span>
+                                </p>
+                                <div className="flex items-center gap-3 pt-0.5">
+                                  <span className="text-[11px] font-bold text-emerald-700">
+                                    ✓ ওয়ার্কশপ ও ল্যাব রেডি ({selectedTrade})
+                                  </span>
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    সিট ক্ষমতা: {center.capacity} জন
+                                  </span>
+                                </div>
                               </div>
-                              <p className="text-xs text-slate-600 flex items-center gap-1">
-                                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                <span>{center.address} ({center.city})</span>
-                              </p>
-                              <span className="text-[11px] font-bold text-emerald-700 block">
-                                ✓ Verified Workshops for {selectedTrade}
-                              </span>
-                            </div>
-                            {isSelected && <CheckCircle2 className="w-5 h-5 text-[#0B3B3C] shrink-0 mt-1" />}
-                          </button>
-                        );
-                      })}
+                              {isSelected && <CheckCircle2 className="w-5 h-5 text-[#0B3B3C] shrink-0 mt-1" />}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
 

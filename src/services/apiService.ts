@@ -140,20 +140,17 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
   const digitsOnly = clean.replace(/\D/g, '');
 
   try {
-    // 1. Try direct doc ID
+    // 1. Try direct doc ID in Firestore
     const directDoc = await getDoc(doc(db, 'candidates', identifier.trim()));
     if (directDoc.exists()) {
       return { id: directDoc.id, ...directDoc.data() } as Candidate;
     }
 
-    // 2. Try searching in all candidates
+    // 2. Try searching in all candidates stored in Firestore
     const all = await getAllCandidates();
     const match = all.find((c) => {
       const emailLower = c.email?.toLowerCase() || '';
-      const emailPrefix = emailLower.split('@')[0];
       const emailMatch = emailLower === clean;
-      const emailPrefixMatch = emailPrefix && (emailPrefix === clean || clean === emailPrefix);
-      const nameMatch = c.fullName?.toLowerCase().includes(clean) || clean.includes(c.fullName?.toLowerCase() || '___');
       const idMatch = c.candidateId?.toLowerCase() === clean;
       const passportMatch = c.passportNumber?.toLowerCase() === clean;
       const uidMatch = c.uid?.toLowerCase() === clean || c.id?.toLowerCase() === clean;
@@ -162,54 +159,38 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
         (digitsOnly && phoneDigits && (phoneDigits === digitsOnly || phoneDigits.endsWith(digitsOnly) || digitsOnly.endsWith(phoneDigits))) ||
         c.mobileNumber?.toLowerCase() === clean;
 
-      return emailMatch || emailPrefixMatch || nameMatch || idMatch || passportMatch || uidMatch || phoneMatch;
+      return emailMatch || idMatch || passportMatch || uidMatch || phoneMatch;
     });
 
     if (match) return match;
 
-    // 3. AUTO-PROVISION SVPI CANDIDATE PROFILE FOR ANY VALID EMAIL
-    // When a candidate with an SVPI/Takamul account logs in with their email,
-    // ensure their profile is instantly created/synced in Firestore so they are never blocked with "তথ্য পাওয়া যায়নি"
-    if (clean.includes('@')) {
-      const emailUsername = clean.split('@')[0];
-      const formattedName = emailUsername
-        .split(/[._-]/)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
+    // 3. Search in Bangladesh Takamul Verified Admit / Ticket Holders list
+    const { BANGLADESH_ADMIT_CANDIDATES } = await import('../data/admitCandidates');
+    const admitMatch = BANGLADESH_ADMIT_CANDIDATES.find((c) => {
+      const emailLower = c.email?.toLowerCase() || '';
+      const emailMatch = emailLower === clean;
+      const idMatch = c.candidateId?.toLowerCase() === clean;
+      const passportMatch = c.passportNumber?.toLowerCase() === clean;
+      const phoneDigits = c.mobileNumber?.replace(/\D/g, '') || '';
+      const phoneMatch =
+        (digitsOnly && phoneDigits && (phoneDigits === digitsOnly || phoneDigits.endsWith(digitsOnly))) ||
+        c.mobileNumber?.toLowerCase() === clean;
 
-      const autoCandidateId = `SVP-${Math.floor(100000 + Math.random() * 900000)}`;
-      const autoPassport = `A${Math.floor(10000000 + Math.random() * 90000000)}`;
-      const now = new Date();
-      const futureDate = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      return emailMatch || idMatch || passportMatch || phoneMatch;
+    });
 
-      const newCandDocRef = doc(collection(db, 'candidates'));
-      const newCandidate: Candidate = {
-        id: newCandDocRef.id,
-        uid: newCandDocRef.id,
-        candidateId: autoCandidateId,
-        fullName: formattedName || 'SVPI Registered Candidate',
-        passportNumber: autoPassport,
-        mobileNumber: '+880 1700 000000',
-        email: clean,
-        trade: 'Electrical Installation',
-        dateOfBirth: '1995-01-01',
-        examDateId: 'date-01',
-        examDate: futureDate,
-        examCenterId: 'tc-dxb-01',
-        examCenter: 'Dubai Central Skill Testing Complex',
-        examStatus: 'UPCOMING',
-        createdAt: new Date().toISOString(),
-      };
-
+    if (admitMatch) {
+      // Sync into Firestore so future sessions, reschedule records, and audits persist
       try {
-        await setDoc(newCandDocRef, newCandidate);
-        return newCandidate;
-      } catch (persistErr) {
-        console.warn('Could not persist auto-candidate to Firestore, returning in-memory:', persistErr);
-        return newCandidate;
+        const candDocRef = doc(db, 'candidates', admitMatch.id);
+        await setDoc(candDocRef, admitMatch, { merge: true });
+      } catch (e) {
+        console.warn('Could not mirror admit candidate to Firestore:', e);
       }
+      return admitMatch;
     }
 
+    // No ticket/admit card found: Strictly return null (no fake random creation)
     return null;
   } catch (err) {
     console.error('Error in findCandidateForAuth:', err);

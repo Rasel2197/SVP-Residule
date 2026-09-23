@@ -31,14 +31,21 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
   const [pendingCandidate, setPendingCandidate] = useState<Candidate | null>(null);
   const [targetEmail, setTargetEmail] = useState<string>('');
   const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number>(0);
   const [countdown, setCountdown] = useState<number>(60);
   const [canResend, setCanResend] = useState<boolean>(false);
+  const [isOtpExpired, setIsOtpExpired] = useState<boolean>(false);
 
-  // Countdown timer for Resend OTP
+  // Countdown timer for Resend OTP & Expiration
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (step === 'otp' && countdown > 0) {
+    if (step === 'otp') {
       timer = setInterval(() => {
+        const now = Date.now();
+        if (otpExpiresAt > 0 && now >= otpExpiresAt) {
+          setIsOtpExpired(true);
+        }
+
         setCountdown((prev) => {
           if (prev <= 1) {
             setCanResend(true);
@@ -51,7 +58,7 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [step, countdown]);
+  }, [step, otpExpiresAt]);
 
   // Helper to generate a 6-digit numeric OTP
   const createSixDigitOtp = () => {
@@ -106,41 +113,22 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
           allCandidates.find(
             (c) =>
               c.email?.toLowerCase() === cleanEmail.toLowerCase() ||
-              (c.email && c.email.toLowerCase().split('@')[0] === cleanEmail.toLowerCase()) ||
               c.candidateId?.toLowerCase() === cleanEmail.toLowerCase() ||
-              c.fullName?.toLowerCase().includes(cleanEmail.toLowerCase())
+              c.passportNumber?.toLowerCase() === cleanEmail.toLowerCase()
           ) || null;
       }
 
-      // If still not found, construct an instant candidate object so they are never blocked
+      // If no valid admit/ticket holder candidate found: Reject strictly!
       if (!candidate) {
-        const emailUsername = cleanEmail.split('@')[0];
-        const formattedName = emailUsername
-          .split(/[._-]/)
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(' ');
-        const candId = `SVP-${Math.floor(100000 + Math.random() * 900000)}`;
-
-        candidate = {
-          id: `cand-${Date.now()}`,
-          uid: `cand-${Date.now()}`,
-          candidateId: candId,
-          fullName: formattedName || 'SVPI Candidate',
-          passportNumber: `A${Math.floor(10000000 + Math.random() * 90000000)}`,
-          mobileNumber: '+880 1700 000000',
-          email: cleanEmail,
-          trade: 'Electrical Installation',
-          dateOfBirth: '1995-01-01',
-          examDate: '2026-10-15',
-          examCenter: 'Dubai Central Skill Testing Complex',
-          examStatus: 'UPCOMING',
-          createdAt: new Date().toISOString(),
-        };
+        throw new Error(
+          'তথ্য পাওয়া যায়নি (Record Not Found)। শুধুমাত্র যেসকল প্রার্থী কোনো সরকারি/বেসরকারি টিটিসিতে তাকামুল পরীক্ষার জন্য সিট কনফার্ম ও অ্যাডমিট/টিকিট তুলেছেন, তাদের তথ্যই সিস্টেমে সক্রিয় রয়েছে।'
+        );
       }
 
       // 3. Generate OTP and send to candidate's registered email
       const newOtp = createSixDigitOtp();
       const candEmail = candidate.email || cleanEmail;
+      const expiresAt = Date.now() + 2 * 60 * 1000; // 2 minutes validity
 
       // Send to backend mail service
       await dispatchOtpEmail(candEmail, newOtp, candidate.fullName);
@@ -148,12 +136,14 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
       setPendingCandidate(candidate);
       setTargetEmail(candEmail);
       setGeneratedOtp(newOtp);
+      setOtpExpiresAt(expiresAt);
+      setIsOtpExpired(false);
       setOtp('');
       setCountdown(60);
       setCanResend(false);
       setStep('otp');
 
-      showToast(`Verification code sent to ${candEmail}. Code: ${newOtp}`, 'info');
+      showToast(`আপনার ইমেইলে ওটিপি কোড পাঠানো হয়েছে (${candEmail})। ইনবক্স অথবা স্প্যাম ফোল্ডার চেক করুন।`, 'success');
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err?.message || 'Invalid email address. Please try again.');
@@ -173,8 +163,15 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
       return;
     }
 
+    // 1. Expiration check: ওটিপির মেয়াদ শেষ হয়েছে কিনা যাচাই
+    if (Date.now() > otpExpiresAt || isOtpExpired) {
+      setError('এই ওটিপির মেয়াদ শেষ হয়ে গেছে (OTP Expired)। অনুগ্রহ করে নিচে "Resend OTP" বাটনে ক্লিক করে নতুন ওটিপি গ্রহণ করুন।');
+      return;
+    }
+
+    // 2. Incorrect OTP check: ভুল ওটিপি দিলে লগইন হবে না
     if (cleanOtp !== generatedOtp) {
-      setError('ভুল ওটিপি কোড (Invalid OTP). অনুগ্রহ করে আপনার ইমেইল চেক করে সঠিক কোড দিন অথবা Resend OTP করুন।');
+      setError('ভুল ওটিপি কোড (Invalid OTP)। সঠিক ৬-সংখ্যার কোড দিন অথবা মেয়াদের পর Resend OTP করুন।');
       return;
     }
 
@@ -187,7 +184,7 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
     setIsLoading(true);
     try {
       loginCandidateDirect(pendingCandidate);
-      showToast(`Welcome back, ${pendingCandidate.fullName}!`, 'success');
+      showToast(`স্বাগতম, ${pendingCandidate.fullName}!`, 'success');
       onNavigate('candidate-dashboard');
     } catch (err: any) {
       console.error('OTP verification error:', err);
@@ -197,18 +194,21 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
     }
   };
 
-  // Handle Resend OTP
+  // Handle Resend OTP: মেয়াদ চলে গেলে বা প্রয়োজন হলে নতুন ওটিপি পাঠানো
   const handleResendOtp = async () => {
     if (!canResend || !pendingCandidate) return;
     const newOtp = createSixDigitOtp();
+    const expiresAt = Date.now() + 2 * 60 * 1000; // 2 minutes validity for new OTP
     setGeneratedOtp(newOtp);
+    setOtpExpiresAt(expiresAt);
+    setIsOtpExpired(false);
     setOtp('');
     setCountdown(60);
     setCanResend(false);
     setError(null);
 
     await dispatchOtpEmail(targetEmail, newOtp, pendingCandidate.fullName);
-    showToast(`New verification code sent to ${targetEmail}. Code: ${newOtp}`, 'info');
+    showToast(`নতুন ওটিপি কোড পুনরায় পাঠানো হয়েছে (${targetEmail})। ২ মিনিটের মধ্যে ব্যবহার করুন।`, 'info');
   };
 
   return (
@@ -332,17 +332,17 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
               {/* Candidate Info Notice */}
               <div className="text-center pt-2">
                 <p className="text-xs text-slate-500">
-                  প্রার্থী শুধুমাত্র পূর্বে নিবন্ধিত SVPI একাউন্ট ক্রেডেনশিয়াল ও ইমেইল ওটিপি কোড দিয়ে সরাসরি লগইন করবেন।
+                  বাংলাদেশের যেকোনো সরকারি বা বেসরকারি টিটিসিতে তাকামুল পরীক্ষার সিট নিশ্চিতকারী প্রার্থী তার নিবন্ধিত ইমেইল ও পাসওয়ার্ড দিয়ে ওটিপি পেয়ে লগইন করবেন।
                 </p>
               </div>
             </form>
 
             {/* Candidate Secure Login Notice */}
             <div className="mt-6 pt-5 border-t border-slate-100">
-              <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div className="flex items-start gap-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <ShieldCheck className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
                 <span>
-                  প্রার্থী তার নিজস্ব নিবন্ধিত ইমেইল ও পাসওয়ার্ড দিয়ে লগইন করবেন। লগইন বাটনে চাপার পর সংশ্লিষ্ট প্রার্থীর ইমেইলে গোপন ওটিপি কোড পাঠানো হবে।
+                  <strong>নিরাপত্তা নীতি:</strong> যেসকল প্রার্থীর নাম ও পাসপোর্ট বাংলাদেশ টিটিসি তাকামুল এক্সাম সিস্টেমে ভেরিফাইড আছে, শুধুমাত্র তাদের ইমেইলেই ওটিপি কোড পাঠানো হবে। অচেনা বা অনিবন্ধিত তথ্যে কোনো ওটিপি পাঠানো হবে না।
                 </span>
               </div>
             </div>
@@ -379,12 +379,27 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
             {error && (
               <div
                 id="otp-error-alert"
-                className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2.5 text-xs sm:text-sm text-rose-800"
+                className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm text-rose-800"
               >
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
+
+            {/* OTP Expiration status badge */}
+            <div className="mb-4 flex items-center justify-center">
+              {isOtpExpired ? (
+                <span className="px-3 py-1 bg-rose-100 text-rose-800 border border-rose-200 rounded-full text-[11px] font-bold flex items-center gap-1.5 animate-pulse">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  ওটিপির মেয়াদ শেষ হয়ে গেছে (OTP Expired)
+                </span>
+              ) : (
+                <span className="px-3 py-1 bg-teal-50 text-teal-800 border border-teal-200 rounded-full text-[11px] font-medium flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+                  ওটিপির মেয়াদ: ২ মিনিট (OTP Valid for 2 mins)
+                </span>
+              )}
+            </div>
 
             {/* OTP Form */}
             <form onSubmit={handleVerifyOtp} className="space-y-5">
@@ -450,7 +465,7 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
                   <span>Change Email</span>
                 </button>
 
-                {canResend ? (
+                {canResend || isOtpExpired ? (
                   <button
                     type="button"
                     onClick={handleResendOtp}
