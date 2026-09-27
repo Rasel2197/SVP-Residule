@@ -13,7 +13,7 @@ export const BANGLADESH_ADMIT_CANDIDATES: Candidate[] = [
     fullName: 'Mohammad Tariqul Islam',
     passportNumber: 'A09841256',
     mobileNumber: '+880 1712 345678',
-    email: 'raselahmed231956@gmail.com',
+    email: 'tariqul.islam@candidate.takamul.gov.bd',
     trade: 'Electrical Installation',
     dateOfBirth: '1996-03-15',
     examDateId: 'date-01',

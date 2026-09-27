@@ -104,20 +104,19 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, onOpenVerification }) =>
                   <button
                     id="btn-hero-operator-login"
                     onClick={() => onNavigate('operator-login')}
-                    className="px-6 py-3.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-sm rounded-md shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                    className="px-6 py-3.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-sm rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
                   >
                     <Coins className="w-4 h-4 text-amber-900" />
-                    ইউজার / ক্রেডিট লগইন (Operator)
+                    ইউজার লগইন (Sign In)
                     <ArrowRight className="w-4 h-4 text-amber-950" />
                   </button>
 
                   <button
-                    id="btn-hero-candidate-login"
-                    onClick={() => onNavigate('candidate-login')}
-                    className="px-6 py-3.5 bg-white hover:bg-slate-100 text-[#0B3B3C] font-bold text-sm rounded-md shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                    id="btn-hero-operator-register"
+                    onClick={() => onNavigate('operator-register')}
+                    className="px-6 py-3.5 bg-white hover:bg-slate-100 text-[#0B3B3C] font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
                   >
-                    <User className="w-4 h-4 text-[#0B3B3C]" />
-                    Candidate Sign In (প্রার্থী লগইন)
+                    নতুন একাউন্ট খুলুন (Sign Up)
                   </button>
                 </>
               )}

@@ -68,13 +68,17 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
   // Dispatch OTP email via backend endpoint
   const dispatchOtpEmail = async (email: string, code: string, name: string) => {
     try {
-      await fetch('/api/send-otp', {
+      const res = await fetch('/api/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp: code, fullName: name }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        console.warn('Backend send-otp returned error:', data);
+      }
     } catch (err) {
-      console.warn('Backend send-otp failed, fallback local active:', err);
+      console.warn('Backend send-otp network error:', err);
     }
   };
 
@@ -338,12 +342,25 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
             </form>
 
             {/* Candidate Secure Login Notice */}
-            <div className="mt-6 pt-5 border-t border-slate-100">
+            <div className="mt-6 pt-5 border-t border-slate-100 space-y-3">
               <div className="flex items-start gap-2 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <ShieldCheck className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
                 <span>
-                  <strong>নিরাপত্তা নীতি:</strong> যেসকল প্রার্থীর নাম ও পাসপোর্ট বাংলাদেশ টিটিসি তাকামুল এক্সাম সিস্টেমে ভেরিফাইড আছে, শুধুমাত্র তাদের ইমেইলেই ওটিপি কোড পাঠানো হবে। অচেনা বা অনিবন্ধিত তথ্যে কোনো ওটিপি পাঠানো হবে না।
+                  <strong>প্রার্থী নীতি:</strong> যেসকল প্রার্থীর নাম ও পাসপোর্ট বাংলাদেশ টিটিসি তাকামুল এক্সাম সিস্টেমে ভেরিফাইড আছে, শুধুমাত্র তাদের নিজস্ব নিবন্ধিত ইমেইলেই ওটিপি কোড যাবে।
                 </span>
+              </div>
+
+              <div className="text-center pt-2">
+                <p className="text-xs text-slate-500">
+                  আপনি কি সিস্টেম এডমিন?{' '}
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('admin-login')}
+                    className="font-bold text-[#0B3B3C] hover:underline"
+                  >
+                    এডমিন লগইন পোর্টালে যান
+                  </button>
+                </p>
               </div>
             </div>
           </>
@@ -401,35 +418,37 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
               )}
             </div>
 
-            {/* OTP Form */}
-            <form onSubmit={handleVerifyOtp} className="space-y-5">
-              <div>
-                <label
-                  htmlFor="input-candidate-otp"
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 text-center"
-                >
-                  6-Digit Email Verification Code
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <KeyRound className="w-4 h-4" />
+              {/* OTP Form */}
+              <form onSubmit={handleVerifyOtp} className="space-y-5">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label
+                      htmlFor="input-candidate-otp"
+                      className="block text-xs font-bold uppercase tracking-wider text-slate-700 text-center"
+                    >
+                      6-Digit Email Verification Code
+                    </label>
                   </div>
-                  <input
-                    id="input-candidate-otp"
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={6}
-                    autoComplete="one-time-code"
-                    autoFocus
-                    required
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="• • • • • •"
-                    className="w-full pl-10 pr-4 py-3.5 text-center text-xl font-mono font-bold tracking-[0.35em] bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-300 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
-                  />
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <KeyRound className="w-4 h-4" />
+                    </div>
+                    <input
+                      id="input-candidate-otp"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      autoComplete="one-time-code"
+                      autoFocus
+                      required
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="• • • • • •"
+                      className="w-full pl-10 pr-4 py-3.5 text-center text-xl font-mono font-bold tracking-[0.35em] bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder-slate-300 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                    />
+                  </div>
                 </div>
-              </div>
 
               {/* Submit OTP Button */}
               <button

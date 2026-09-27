@@ -31,17 +31,18 @@ async function startServer() {
       let emailSent = false;
 
       if (smtpUser && smtpPass) {
+        // Use service: 'gmail' or host/port config for optimal Gmail delivery
         const transporter = nodemailer.createTransport({
-          host: smtpHost,
-          port: smtpPort,
-          secure: smtpPort === 465,
+          service: "gmail",
           auth: {
             user: smtpUser,
             pass: smtpPass,
           },
         });
 
-        await transporter.sendMail({
+        console.log(`[RESIDULE SVP] Attempting to send email via Gmail to ${email} using ${smtpUser}`);
+
+        const info = await transporter.sendMail({
           from: `"RESIDULE SVP" <${smtpUser}>`,
           to: email,
           subject: `Your RESIDULE SVP Login Verification Code: ${otp}`,

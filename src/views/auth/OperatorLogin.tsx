@@ -254,14 +254,6 @@ export const OperatorLogin: React.FC<OperatorLoginProps> = ({ onNavigate, onForg
         {/* Portal Switcher Footer */}
         <div className="flex items-center justify-center gap-4 text-xs font-semibold text-slate-500">
           <button
-            onClick={() => onNavigate('candidate-login')}
-            className="hover:text-slate-800 hover:underline flex items-center gap-1"
-          >
-            <User className="w-3.5 h-3.5 text-teal-700" />
-            <span>প্রার্থী লগইন (Candidate Login)</span>
-          </button>
-          <span>•</span>
-          <button
             onClick={() => onNavigate('admin-login')}
             className="hover:text-slate-800 hover:underline flex items-center gap-1"
           >

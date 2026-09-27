@@ -35,7 +35,7 @@ const AppContent: React.FC = () => {
   const { currentUser, role, isAdmin, isCandidate, isOperator, isLoading } = useAuth();
   const { showToast } = useToast();
 
-  const [currentView, setCurrentView] = useState<string>('candidate-login');
+  const [currentView, setCurrentView] = useState<string>('operator-login');
   const [isForgotModalOpen, setIsForgotModalOpen] = useState<boolean>(false);
   const [selectedCandidateForMarksheet, setSelectedCandidateForMarksheet] = useState<Candidate | null>(null);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState<boolean>(false);
@@ -65,16 +65,6 @@ const AppContent: React.FC = () => {
       'operator-dashboard',
     ];
 
-    const candidateViews = [
-      'candidate-dashboard',
-      'candidate-exam-details',
-      'candidate-change-date',
-      'candidate-change-center',
-      'candidate-marksheet',
-      'candidate-history',
-      'candidate-profile',
-    ];
-
     if (adminViews.includes(view)) {
       if (!currentUser) {
         showToast('Please sign in to access the Administrator Portal.', 'error');
@@ -83,33 +73,21 @@ const AppContent: React.FC = () => {
       }
       if (!isAdmin) {
         showToast('Administrative privileges required to access this resource.', 'error');
-        setCurrentView(isOperator ? 'operator-dashboard' : isCandidate ? 'candidate-dashboard' : 'home');
+        setCurrentView(isOperator ? 'operator-dashboard' : 'operator-login');
         return;
       }
     }
 
     if (operatorViews.includes(view)) {
       if (!currentUser) {
-        showToast('অনুগ্রহ করে ইউজার একাউন্টে লগইন করুন (Please sign in as operator).', 'error');
+        showToast('অনুগ্রহ করে ইউজার / অপারেটর একাউন্টে লগইন করুন।', 'error');
         setCurrentView('operator-login');
         return;
       }
       if (!isOperator && !isAdmin) {
         showToast('Operator authorization required.', 'error');
-        setCurrentView(isCandidate ? 'candidate-dashboard' : 'home');
+        setCurrentView('operator-login');
         return;
-      }
-    }
-
-    if (candidateViews.includes(view)) {
-      if (!currentUser) {
-        showToast('Please sign in to access candidate portal services.', 'error');
-        setCurrentView('candidate-login');
-        return;
-      }
-      if (isAdmin && !isCandidate) {
-        // Admins can view candidate areas if they choose, but normally redirect to admin dashboard
-        // Or let admin proceed
       }
     }
 
@@ -121,16 +99,14 @@ const AppContent: React.FC = () => {
   React.useEffect(() => {
     if (!isLoading) {
       if (currentUser) {
-        if (isAdmin && (currentView === 'home' || currentView === 'candidate-login' || currentView === 'operator-login' || currentView === 'admin-login')) {
+        if (isAdmin && (currentView === 'home' || currentView === 'operator-login' || currentView === 'operator-register' || currentView === 'admin-login' || currentView === 'candidate-login')) {
           setCurrentView('admin-dashboard');
-        } else if (isOperator && (currentView === 'home' || currentView === 'candidate-login' || currentView === 'operator-login' || currentView === 'admin-login')) {
+        } else if (isOperator && (currentView === 'home' || currentView === 'operator-login' || currentView === 'operator-register' || currentView === 'admin-login' || currentView === 'candidate-login')) {
           setCurrentView('operator-dashboard');
-        } else if (isCandidate && (currentView === 'home' || currentView === 'candidate-login' || currentView === 'operator-login' || currentView === 'admin-login')) {
-          setCurrentView('candidate-dashboard');
         }
       }
     }
-  }, [currentUser, isAdmin, isCandidate, isOperator, isLoading]);
+  }, [currentUser, isAdmin, isOperator, isLoading]);
 
   if (isLoading) {
     return (

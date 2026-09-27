@@ -271,12 +271,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onNavigate, onForgotPass
 
           <div>
             <button
-              id="btn-admin-switch-candidate"
+              id="btn-admin-switch-operator"
               type="button"
-              onClick={() => onNavigate('candidate-login')}
+              onClick={() => onNavigate('operator-login')}
               className="text-xs text-slate-500 hover:text-slate-800"
             >
-              Are you a candidate? Switch to Candidate Portal →
+              ← ইউজার / অপারেটর পোর্টালে যান (Operator Portal)
             </button>
           </div>
         </div>

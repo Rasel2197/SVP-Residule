@@ -315,11 +315,10 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
         {/* Footer Navigation */}
         <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold text-slate-500">
           <button
-            onClick={() => onNavigate('candidate-login')}
+            onClick={() => onNavigate('admin-login')}
             className="hover:text-slate-800 hover:underline flex items-center gap-1"
           >
-            <User className="w-3.5 h-3.5 text-teal-700" />
-            <span>প্রার্থী লগইন (Candidate Login)</span>
+            <span>এডমিন কন্ট্রোল সেন্টার</span>
           </button>
         </div>
       </div>
