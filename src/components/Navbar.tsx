@@ -323,19 +323,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <button
                   id="btn-nav-operator-login"
-                  onClick={() => handleNavClick('operator-login')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    currentView === 'operator-login' || currentView === 'operator-register'
-                      ? 'bg-amber-400 text-amber-950 font-bold shadow-xs'
-                      : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
-                  }`}
-                  title="ইউজার লগইন"
+                  onClick={() =>
+                    handleNavClick(
+                      currentView === 'operator-register' ? 'operator-login' : 'operator-register'
+                    )
+                  }
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-colors cursor-pointer"
                 >
-                  <Coins className="w-3.5 h-3.5 text-amber-300" />
-                  <span>ইউজার লগইন</span>
+                  {currentView === 'operator-register' ? 'লগইন (Sign In)' : 'নতুন একাউন্ট (Sign Up)'}
                 </button>
 
                 <a
@@ -343,10 +341,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   href="https://wa.me/8801305894384?text=Hello%20Admin,%20ami%20Takamul%20Portal%20er%20user.%20Amar%20credit%20kitte%20chai."
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600/90 hover:bg-emerald-500 border border-emerald-400/40 transition-all cursor-pointer shadow-xs"
+                  className="hidden sm:inline-flex items-center gap-1.5 text-xs text-teal-200/90 hover:text-white transition-colors"
                   title="এডমিনের সাথে WhatsApp এ যোগাযোগ করুন"
                 >
-                  <MessageCircle className="w-3.5 h-3.5 fill-white text-emerald-600" />
+                  <MessageCircle className="w-3.5 h-3.5" />
                   <span>WhatsApp: 01305-894384</span>
                 </a>
               </div>
