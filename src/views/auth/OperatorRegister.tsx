@@ -136,24 +136,58 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'ইমেইল সার্ভারে ওটিপি পাঠাতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
       }
-      showToast(`আপনার ইমেইলে (${targetContact}) ওটিপি কোড পাঠানো হয়েছে! ইনবক্স অথবা স্প্যাম (Spam) ফোল্ডার চেক করুন।`, 'success');
+      showToast(`আপনার ইমেইলে (${targetContact}) ওটিপি কোড পাঠানো হয়েছে!`, 'success');
     } else {
-      // Mobile Phone: Use Firebase Phone Authentication
+      // Mobile Phone: First try server SMS gateway if available
+      let smsSent = false;
       try {
-        if (!window.recaptchaVerifier) {
+        const smsRes = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: targetContact, otp: code, fullName: name }),
+        });
+        const smsData = await smsRes.json();
+        if (smsRes.ok && smsData.success) {
+          smsSent = true;
+          showToast(`আপনার মোবাইল নম্বরে (${targetContact}) এসএমএস এর মাধ্যমে ওটিপি কোড পাঠানো হয়েছে।`, 'success');
+        }
+      } catch (smsErr) {
+        console.warn('Backend SMS API notice:', smsErr);
+      }
+
+      if (!smsSent) {
+        // Fallback to Firebase Phone Authentication
+        try {
+          if (window.recaptchaVerifier) {
+            try {
+              window.recaptchaVerifier.clear();
+            } catch {}
+            window.recaptchaVerifier = undefined;
+          }
           window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
             size: 'invisible',
             callback: () => {},
           });
+          const confirmResult = await signInWithPhoneNumber(auth, targetContact, window.recaptchaVerifier);
+          setConfirmationResult(confirmResult);
+          showToast(`আপনার মোবাইল নম্বরে (${targetContact}) এসএমএস এর মাধ্যমে ওটিপি কোড পাঠানো হয়েছে।`, 'success');
+        } catch (fbPhoneErr: any) {
+          console.error('Firebase Phone Auth error:', fbPhoneErr);
+          const errCode = fbPhoneErr?.code || '';
+          let msg = 'মোবাইল নম্বরে সরাসরি এসএমএস পাঠানো সম্ভব হয়নি।';
+          if (errCode === 'auth/operation-not-allowed') {
+            msg = 'ফায়ারবেস কনসোলে Phone Authentication সক্রিয় করা নেই। অনুগ্রহ করে "ইমেইল এড্রেস (Gmail)" নির্বাচন করে সাইন আপ করুন—যেখানে সরাসরি আপনার ইনবক্সে ওটিপি কোড চলে যাবে।';
+          } else if (errCode === 'auth/quota-exceeded') {
+            msg = 'এসএমএস পাঠানোর কোটা সাময়িকভাবে শেষ হয়েছে। অনুগ্রহ করে "ইমেইল এড্রেস (Gmail)" নির্বাচন করে ওটিপি নিন।';
+          } else if (errCode === 'auth/invalid-phone-number') {
+            msg = 'মোবাইল নম্বরটি সঠিক নয়। অনুগ্রহ করে সঠিক ১০-সংখ্যার বাংলাদেশি নম্বর দিন।';
+          } else if (errCode === 'auth/captcha-check-failed' || errCode === 'auth/internal-error') {
+            msg = 'reCAPTCHA সিকিউরিটি যাচাই ব্যর্থ হয়েছে। অনুগ্রহ করে "ইমেইল এড্রেস (Gmail)" নির্বাচন করে সাইন আপ করুন।';
+          } else {
+            msg = fbPhoneErr?.message || msg;
+          }
+          throw new Error(msg);
         }
-        const confirmResult = await signInWithPhoneNumber(auth, targetContact, window.recaptchaVerifier);
-        setConfirmationResult(confirmResult);
-        showToast(`আপনার মোবাইল নম্বরে (${targetContact}) এসএমএস এর মাধ্যমে ওটিপি কোড পাঠানো হয়েছে।`, 'success');
-      } catch (fbPhoneErr: any) {
-        console.error('Firebase Phone Auth error:', fbPhoneErr);
-        throw new Error(
-          'মোবাইল নম্বরে সরাসরি এসএমএস পাঠানোর জন্য ফায়ারবেস কনসোলে Phone Authentication ও SMS কোটা কনফিগারেশন প্রয়োজন। অনুগ্রহ করে "ইমেইল এড্রেস" নির্বাচন করে সাইন আপ করুন—যেখানে সরাসরি আপনার জিমেইলে ওটিপি পৌঁছে যাবে।'
-        );
       }
     }
   };

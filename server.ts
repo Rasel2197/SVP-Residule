@@ -98,6 +98,55 @@ async function startServer() {
     }
   });
 
+  // API route to send OTP SMS
+  app.post("/api/send-sms", async (req, res) => {
+    const { phone, otp, fullName } = req.body;
+    if (!phone || !otp) {
+      return res.status(400).json({ error: "Phone number and OTP are required" });
+    }
+
+    const cleanPhone = phone.replace(/\D/g, "");
+    const formattedPhone = cleanPhone.startsWith("880") ? `+${cleanPhone}` : cleanPhone.startsWith("0") ? `+880${cleanPhone.slice(1)}` : `+880${cleanPhone}`;
+    const smsMessage = `[SVP Reschedule] আপনার ওটিপি ভেরিফিকেশন কোড: ${otp}। মেয়াদ ১০ মিনিট। কোডটি গোপন রাখুন।`;
+
+    console.log(`[RESIDULE SVP] Attempting SMS dispatch to ${formattedPhone}`);
+
+    // Check for Greenweb SMS
+    const greenwebToken = process.env.GREENWEB_TOKEN || process.env.SMS_API_KEY;
+    if (greenwebToken) {
+      try {
+        const gwUrl = `https://api.greenweb.com.bd/api.php?token=${encodeURIComponent(greenwebToken)}&to=${encodeURIComponent(formattedPhone)}&message=${encodeURIComponent(smsMessage)}`;
+        const gwRes = await fetch(gwUrl);
+        const gwText = await gwRes.text();
+        console.log(`[RESIDULE SVP] Greenweb response:`, gwText);
+        return res.json({ success: true, provider: "greenweb", message: "SMS dispatched successfully" });
+      } catch (e: any) {
+        console.error("[RESIDULE SVP] Greenweb error:", e);
+      }
+    }
+
+    // Check for BulksmsBD
+    const bulksmsKey = process.env.BULKSMS_API_KEY;
+    const bulksmsSender = process.env.BULKSMS_SENDER_ID || "8809612443880";
+    if (bulksmsKey) {
+      try {
+        const bsUrl = `http://bulksmsbd.net/api/smsapi?api_key=${encodeURIComponent(bulksmsKey)}&type=text&number=${encodeURIComponent(cleanPhone)}&senderid=${encodeURIComponent(bulksmsSender)}&message=${encodeURIComponent(smsMessage)}`;
+        const bsRes = await fetch(bsUrl);
+        const bsData = await bsRes.json();
+        console.log(`[RESIDULE SVP] BulksmsBD response:`, bsData);
+        return res.json({ success: true, provider: "bulksmsbd", message: "SMS dispatched successfully" });
+      } catch (e: any) {
+        console.error("[RESIDULE SVP] BulksmsBD error:", e);
+      }
+    }
+
+    return res.status(501).json({
+      success: false,
+      reason: "NO_GATEWAY",
+      error: "সার্ভারে বাহ্যিক এসএমএস গেটওয়ে কনফিগার করা নেই। অনুগ্রহ করে ফায়ারবেস ফোন অথেন্টিকেশন অথবা জিমেইল ওটিপি ব্যবহার করুন।"
+    });
+  });
+
   // API health route
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", app: "RESIDULE SVP" });
