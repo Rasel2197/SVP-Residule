@@ -324,24 +324,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-3">
-                <button
-                  id="btn-nav-operator-login"
-                  onClick={() =>
-                    handleNavClick(
-                      currentView === 'operator-register' ? 'operator-login' : 'operator-register'
-                    )
-                  }
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-colors cursor-pointer"
-                >
-                  {currentView === 'operator-register' ? 'লগইন (Sign In)' : 'নতুন একাউন্ট (Sign Up)'}
-                </button>
-
                 <a
                   id="btn-nav-whatsapp-help"
                   href="https://wa.me/8801305894384?text=Hello%20Admin,%20ami%20Takamul%20Portal%20er%20user.%20Amar%20credit%20kitte%20chai."
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hidden sm:inline-flex items-center gap-1.5 text-xs text-teal-200/90 hover:text-white transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs text-teal-200/90 hover:text-white transition-colors"
                   title="এডমিনের সাথে WhatsApp এ যোগাযোগ করুন"
                 >
                   <MessageCircle className="w-3.5 h-3.5" />

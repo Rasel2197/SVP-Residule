@@ -63,10 +63,10 @@ interface AuthContextType {
   updateCurrentCandidate: (cand: Candidate) => void;
   registerCandidate: (data: CandidateRegisterInput) => Promise<void>;
   registerOperator: (data: {
-    email: string;
+    email?: string;
     password: string;
     fullName: string;
-    phoneNumber: string;
+    phoneNumber?: string;
     agencyName?: string;
   }) => Promise<OperatorUser>;
   setupFirstAdmin: (email: string, password: string, fullName: string) => Promise<void>;
@@ -479,19 +479,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const registerOperator = async (data: {
-    email: string;
+    email?: string;
     password: string;
     fullName: string;
-    phoneNumber: string;
+    phoneNumber?: string;
     agencyName?: string;
   }): Promise<OperatorUser> => {
     setIsLoading(true);
     try {
+      const cleanPhone = data.phoneNumber?.trim() || '';
+      const digits = cleanPhone.replace(/\D/g, '');
+      const cleanEmail =
+        data.email?.trim().toLowerCase() ||
+        (digits ? `${digits}@svp-portal.com` : `user_${Date.now()}@svp-portal.com`);
+
       // Create operator profile with 0 initial credits (user must request/buy coins from admin)
       const newOp = await createOperatorUser({
-        email: data.email,
+        email: cleanEmail,
         fullName: data.fullName,
-        phoneNumber: data.phoneNumber,
+        phoneNumber: cleanPhone,
         agencyName: data.agencyName || 'Personal / General',
         password: data.password,
         initialCredits: 0,
@@ -528,7 +534,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           type: 'operator',
           uid: newOp.uid,
           email: newOp.email,
-          identifier: newOp.email,
+          identifier: cleanPhone || cleanEmail,
         })
       );
 
