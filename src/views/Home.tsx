@@ -219,15 +219,6 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, onOpenVerification }) =>
             >
               Verify Result
             </button>
-            <button
-              id="link-footer-admin"
-              onClick={() => onNavigate('admin-login')}
-              className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
-              title="Authorized Personnel Only"
-            >
-              <Lock className="w-3 h-3" />
-              <span>Admin</span>
-            </button>
           </div>
         </div>
       </div>

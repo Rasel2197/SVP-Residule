@@ -22,7 +22,16 @@ import {
   QrCode,
   X,
   ExternalLink,
-  MessageCircle
+  MessageCircle,
+  Lock,
+  KeyRound,
+  ShieldAlert,
+  Mail,
+  Eye,
+  EyeOff,
+  BadgeCheck,
+  Fingerprint,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast';
@@ -33,10 +42,25 @@ import {
   directRescheduleCandidate,
   getAllMarksheetsByCandidate,
   getCreditTransactionsByOperator,
-  submitRechargeRequest
+  submitRechargeRequest,
+  findCandidateForAuth
 } from '../../services/apiService';
 import { Candidate, ExamDate, ExamCenter, Marksheet, CreditTransaction } from '../../types';
 import { formatDate } from '../../utils/rules';
+import { verifyCredentialsStrict } from '../../services/credentialService';
+
+// Helper to send OTP email via backend service
+const dispatchOtpEmail = async (email: string, code: string, name?: string) => {
+  try {
+    await fetch('/api/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp: code, fullName: name || 'Candidate' }),
+    });
+  } catch (err) {
+    console.warn('Could not dispatch OTP email:', err);
+  }
+};
 
 interface OperatorDashboardProps {
   onNavigate: (view: string) => void;
@@ -86,6 +110,150 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
   const [trxId, setTrxId] = useState('');
   const [rechargeNote, setRechargeNote] = useState('');
   const [isSubmittingRecharge, setIsSubmittingRecharge] = useState(false);
+
+  // Candidate Authentication State for Reschedule & Marksheet Workstation
+  const [authCandidate, setAuthCandidate] = useState<Candidate | null>(null);
+  const [candidateEmailInput, setCandidateEmailInput] = useState('');
+  const [candidatePasswordInput, setCandidatePasswordInput] = useState('');
+  const [candidateOtpInput, setCandidateOtpInput] = useState('');
+  const [candidateAuthStep, setCandidateAuthStep] = useState<'login' | 'otp' | 'authenticated'>('login');
+  const [candidateOtpGenerated, setCandidateOtpGenerated] = useState('');
+  const [candidateOtpExpiresAt, setCandidateOtpExpiresAt] = useState(0);
+  const [candidateOtpCountdown, setCandidateOtpCountdown] = useState(60);
+  const [isCandidateOtpExpired, setIsCandidateOtpExpired] = useState(false);
+  const [isCandidateAuthenticating, setIsCandidateAuthenticating] = useState(false);
+  const [candidateAuthError, setCandidateAuthError] = useState<string | null>(null);
+  const [showCandidatePassword, setShowCandidatePassword] = useState(false);
+
+  // Countdown timer for Candidate OTP
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (candidateAuthStep === 'otp') {
+      timer = setInterval(() => {
+        const now = Date.now();
+        if (candidateOtpExpiresAt > 0 && now >= candidateOtpExpiresAt) {
+          setIsCandidateOtpExpired(true);
+        }
+        setCandidateOtpCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [candidateAuthStep, candidateOtpExpiresAt]);
+
+  // Initiate Candidate Login with Email & Password
+  const handleInitiateCandidateLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCandidateAuthError(null);
+    const identifier = candidateEmailInput.trim();
+    const pwd = candidatePasswordInput.trim();
+
+    if (!identifier) {
+      setCandidateAuthError('অনুগ্রহ করে প্রার্থীর ইমেইল অথবা ক্যান্ডিডেট আইডি দিন।');
+      return;
+    }
+
+    if (!pwd) {
+      setCandidateAuthError('অনুগ্রহ করে প্রার্থীর পাসওয়ার্ড দিন (পাসপোর্ট নম্বর দিয়ে সরাসরি রিশিডিউল করা সম্ভব নয়, প্রার্থীর লগইন বাধ্যতামূলক)।');
+      return;
+    }
+
+    setIsCandidateAuthenticating(true);
+    try {
+      const verifyResult = await verifyCredentialsStrict(identifier, pwd, ['candidate']);
+      if (!verifyResult.success) {
+        throw new Error(verifyResult.error || 'প্রার্থীর তথ্য পাওয়া যায়নি অথবা পাসওয়ার্ড ভুল।');
+      }
+
+      const cand = verifyResult.user as Candidate;
+      if (!cand) {
+        throw new Error('প্রার্থীর তথ্য পাওয়া যায়নি। শুধুমাত্র নিবন্ধিত ও অ্যাডমিটধারী প্রার্থীর তথ্য সক্রিয় রয়েছে।');
+      }
+
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const targetEmail = cand.email || identifier;
+      const expires = Date.now() + 2 * 60 * 1000;
+
+      await dispatchOtpEmail(targetEmail, otpCode, cand.fullName);
+
+      setCandidateOtpGenerated(otpCode);
+      setCandidateOtpExpiresAt(expires);
+      setIsCandidateOtpExpired(false);
+      setCandidateOtpCountdown(60);
+      setCandidateOtpInput('');
+      setCandidateAuthStep('otp');
+      setSelectedCandidate(cand);
+      showToast(`প্রার্থীর ইমেইলে (${targetEmail}) ৬-সংখ্যার ওটিপি কোড পাঠানো হয়েছে।`, 'success');
+    } catch (err: any) {
+      setCandidateAuthError(err.message || 'প্রার্থী লগইন ব্যর্থ হয়েছে।');
+    } finally {
+      setIsCandidateAuthenticating(false);
+    }
+  };
+
+  // Verify Candidate OTP
+  const handleVerifyCandidateOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCandidateAuthError(null);
+    const cleanOtp = candidateOtpInput.trim();
+
+    if (!cleanOtp) {
+      setCandidateAuthError('অনুগ্রহ করে ৬-সংখ্যার ওটিপি কোডটি লিখুন।');
+      return;
+    }
+
+    if (Date.now() > candidateOtpExpiresAt || isCandidateOtpExpired) {
+      setCandidateAuthError('ওটিপির মেয়াদ শেষ হয়ে গেছে। অনুগ্রহ করে নতুন ওটিপি পাঠান।');
+      return;
+    }
+
+    if (cleanOtp !== candidateOtpGenerated) {
+      setCandidateAuthError('ভুল ওটিপি কোড! অনুগ্রহ করে প্রার্থীর ইমেইলে প্রেরিত সঠিক কোড দিন।');
+      return;
+    }
+
+    if (!selectedCandidate) {
+      setCandidateAuthError('প্রার্থী তথ্য পাওয়া যায়নি। পুনরায় শুরু করুন।');
+      setCandidateAuthStep('login');
+      return;
+    }
+
+    setAuthCandidate(selectedCandidate);
+    setTargetDate(selectedCandidate.examDate || '');
+    setTargetCenter(selectedCandidate.examCenter || '');
+    setCandidateAuthStep('authenticated');
+    showToast(`প্রার্থী ${selectedCandidate.fullName} সফলভাবে লগইন ও ভেরিফাইড হয়েছে!`, 'success');
+  };
+
+  // Resend Candidate OTP
+  const handleResendCandidateOtp = async () => {
+    if (!selectedCandidate) return;
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const targetEmail = selectedCandidate.email || candidateEmailInput;
+    const expires = Date.now() + 2 * 60 * 1000;
+
+    await dispatchOtpEmail(targetEmail, otpCode, selectedCandidate.fullName);
+    setCandidateOtpGenerated(otpCode);
+    setCandidateOtpExpiresAt(expires);
+    setIsCandidateOtpExpired(false);
+    setCandidateOtpCountdown(60);
+    showToast(`নতুন ওটিপি কোড পাঠানো হয়েছে: ${targetEmail}`, 'success');
+  };
+
+  // Candidate Logout from Workstation
+  const handleCandidateLogout = () => {
+    setAuthCandidate(null);
+    setSelectedCandidate(null);
+    setCandidateAuthStep('login');
+    setCandidateEmailInput('');
+    setCandidatePasswordInput('');
+    setCandidateOtpInput('');
+    setCandidateAuthError(null);
+    setRescheduleSuccessSlip(null);
+    setUnlockedMarksheet(null);
+    setMarksheetCandidate(null);
+  };
 
   // Load initial data
   useEffect(() => {
@@ -150,17 +318,26 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
     );
   });
 
-  // Select candidate for reschedule
+  // Select candidate from search/table
   const handleSelectCandidate = (cand: Candidate) => {
     setSelectedCandidate(cand);
+    setCandidateEmailInput(cand.email || cand.candidateId);
     setTargetDate(cand.examDate || '');
     setTargetCenter(cand.examCenter || '');
     setRescheduleSuccessSlip(null);
+    if (!authCandidate) {
+      setCandidateAuthStep('login');
+      showToast(`প্রার্থী ${cand.fullName} এর ইমেইল নির্বাচিত হয়েছে। এখন পাসওয়ার্ড দিন।`, 'info');
+    }
   };
 
   // Execute Reschedule with 1 Credit deduction
   const handleExecuteReschedule = async () => {
-    if (!selectedCandidate) return;
+    const candidateToReschedule = authCandidate || selectedCandidate;
+    if (!candidateToReschedule) {
+      showToast('অনুগ্রহ করে প্রথমে প্রার্থীর ইমেইল ও পাসওয়ার্ড দিয়ে প্রার্থী লগইন সম্পন্ন করুন।', 'error');
+      return;
+    }
 
     if (operatorCredits < 1) {
       showToast('অপর্যাপ্ত ক্রেডিট! আপনার ব্যালেন্সে ০ ক্রেডিট রয়েছে। রিচার্জ করুন।', 'error');
@@ -175,19 +352,19 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
 
     setIsRescheduling(true);
     try {
-      const oldDate = selectedCandidate.examDate || 'Not Assigned';
-      const oldCenter = selectedCandidate.examCenter || 'Not Assigned';
+      const oldDate = candidateToReschedule.examDate || 'Not Assigned';
+      const oldCenter = candidateToReschedule.examCenter || 'Not Assigned';
 
       // 1. Deduct 1 credit from operator
       await deductOperatorCredit('RESCHEDULE', {
-        candidateId: selectedCandidate.candidateId,
-        candidateName: selectedCandidate.fullName,
-        description: `পরীক্ষা রিশিডিউল সম্পন্ন: ${oldDate} -> ${targetDate} (${selectedCandidate.fullName})`,
+        candidateId: candidateToReschedule.candidateId,
+        candidateName: candidateToReschedule.fullName,
+        description: `পরীক্ষা রিশিডিউল সম্পন্ন: ${oldDate} -> ${targetDate} (${candidateToReschedule.fullName})`,
       });
 
       // 2. Direct Reschedule in DB
-      const updatedCand = await directRescheduleCandidate(selectedCandidate.id, {
-        trade: selectedCandidate.trade,
+      const updatedCand = await directRescheduleCandidate(candidateToReschedule.id, {
+        trade: candidateToReschedule.trade,
         examCenter: targetCenter || oldCenter,
         examDate: targetDate,
         reason: rescheduleReason || 'Operator Assisted Reschedule',
@@ -198,6 +375,7 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
         prev.map((c) => (c.id === updatedCand.id ? updatedCand : c))
       );
       setSelectedCandidate(updatedCand);
+      setAuthCandidate(updatedCand);
 
       // Show success slip
       setRescheduleSuccessSlip({
@@ -307,6 +485,315 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
     } finally {
       setIsSubmittingRecharge(false);
     }
+  };
+
+  // Render Unified Ultra-Premium Candidate Login Card
+  const renderCandidateLoginCard = (forModule: 'reschedule' | 'marksheet') => (
+    <div className="space-y-6">
+      {/* Security Protocol Banner */}
+      <div className="bg-linear-to-r from-amber-50 via-orange-50/60 to-amber-50 border border-amber-200/90 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-xs">
+        <div className="w-10 h-10 rounded-xl bg-amber-100/90 border border-amber-300 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+          <ShieldAlert className="w-5 h-5 text-amber-800" />
+        </div>
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] font-black uppercase px-2 py-0.5 bg-amber-200/90 text-amber-950 rounded tracking-wider">
+              OFFICIAL MANDATE
+            </span>
+            <p className="font-extrabold text-amber-950 text-sm">
+              {forModule === 'reschedule'
+                ? 'প্রার্থীর নিরাপত্তা ও রিশিডিউল প্রটোকল'
+                : 'প্রার্থীর নিরাপত্তা ও মার্কশিট উত্তোলন প্রটোকল'}
+            </p>
+          </div>
+          <p className="text-amber-900/90 leading-relaxed font-medium">
+            {forModule === 'reschedule'
+              ? 'শুধুমাত্র পাসপোর্ট নম্বর দিয়ে সরাসরি রিশিডিউল করা সম্ভব নয়। প্রার্থীর সুরক্ষা ও সম্মতি নিশ্চিত করতে প্রথমে প্রার্থীর নিবন্ধিত ইমেইল ও পাসওয়ার্ড দিয়ে প্রার্থী লগইন এবং ওটিপি ভেরিফিকেশন সম্পন্ন করতে হবে।'
+              : 'তাকামুল সরকারি সনদের ফলাফল ও গ্রেডিং সংবেদনশীল নথি। শুধুমাত্র পাসপোর্ট নম্বর দিয়ে সরাসরি মার্কশিট তোলা নিষিদ্ধ। প্রার্থীর সম্মতি ও সুরক্ষা বজায় রাখতে প্রার্থীর ইমেইল ও পাসওয়ার্ড দিয়ে প্রথমে প্রার্থী লগইন এবং ওটিপি ভেরিফিকেশন সম্পন্ন করতে হবে।'}
+          </p>
+        </div>
+      </div>
+
+      {/* Executive Candidate Login Card */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xl shadow-teal-950/5 overflow-hidden transition-all">
+        {/* Top Header Ribbon */}
+        <div className="bg-linear-to-r from-[#0B3B3C] via-[#0E4749] to-[#0B3B3C] px-6 sm:px-8 py-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-teal-800/40">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-white/10 text-teal-200 border border-white/15">
+              <ShieldCheck className="w-3.5 h-3.5 text-teal-300" />
+              <span>{candidateAuthStep === 'login' ? 'STEP 1: IDENTITY VERIFICATION' : 'STEP 2: 2FA OTP VALIDATION'}</span>
+            </div>
+            <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+              <Fingerprint className="w-5 h-5 text-teal-300" />
+              <span>
+                {candidateAuthStep === 'login'
+                  ? (forModule === 'reschedule' ? 'পরীক্ষা রিশিডিউল: প্রার্থী লগইন প্যানেল' : 'মার্কশিট উত্তোলন: প্রার্থী লগইন প্যানেল')
+                  : 'দ্বি-স্তরীয় নিরাপত্তা ওটিপি কোড যাচাই (OTP Validation)'}
+              </span>
+            </h3>
+            <p className="text-xs text-teal-100/80">
+              {candidateAuthStep === 'login'
+                ? 'প্রার্থীর নিবন্ধিত ইমেইল ও পাসওয়ার্ড দিয়ে একাউন্টে প্রবেশ করে সার্ভিস আনলক করুন।'
+                : `প্রার্থীর নিবন্ধিত ইমেইলে প্রেরিত ৬-সংখ্যার ওটিপি কোডটি নিচের ঘরে প্রবেশ করান।`}
+            </p>
+          </div>
+
+          {selectedCandidate && (
+            <div className="px-3.5 py-2 bg-teal-900/90 border border-teal-700/60 rounded-xl text-left sm:text-right shrink-0">
+              <p className="text-[9px] text-teal-300 font-bold uppercase tracking-wider font-mono">SELECTED CANDIDATE</p>
+              <p className="text-xs font-bold text-white truncate max-w-[200px]">{selectedCandidate.fullName}</p>
+              <p className="text-[10px] text-teal-200 font-mono">Passport: {selectedCandidate.passportNumber}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 sm:p-8 space-y-6">
+          {candidateAuthError && (
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-3 shadow-xs">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span className="font-semibold leading-relaxed">{candidateAuthError}</span>
+            </div>
+          )}
+
+          {candidateAuthStep === 'login' ? (
+            <form onSubmit={handleInitiateCandidateLogin} className="space-y-5 max-w-xl">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  প্রার্থীর ইমেইল অথবা ক্যান্ডিডেট আইডি (Candidate Email / ID) *
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
+                    <Mail className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type="text"
+                    value={candidateEmailInput}
+                    onChange={(e) => setCandidateEmailInput(e.target.value)}
+                    placeholder="e.g. raselahmed231956@gmail.com বা TK-2026-001"
+                    className="w-full pl-12 pr-4 py-3 text-xs bg-slate-50/70 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-700 focus:ring-2 focus:ring-teal-700/20 outline-none font-medium transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  প্রার্থীর পাসওয়ার্ড (Candidate Password) *
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-slate-500">
+                    <KeyRound className="w-3.5 h-3.5" />
+                  </div>
+                  <input
+                    type={showCandidatePassword ? 'text' : 'password'}
+                    value={candidatePasswordInput}
+                    onChange={(e) => setCandidatePasswordInput(e.target.value)}
+                    placeholder="প্রার্থীর পাসওয়ার্ড লিখুন"
+                    className="w-full pl-12 pr-11 py-3 text-xs bg-slate-50/70 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-700 focus:ring-2 focus:ring-teal-700/20 outline-none font-medium transition-all"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCandidatePassword(!showCandidatePassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                    title={showCandidatePassword ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
+                  >
+                    {showCandidatePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1 font-medium">
+                  <Lock className="w-3 h-3 text-amber-600 shrink-0" />
+                  <span>প্রার্থীর সুরক্ষা নিশ্চিত করতে পাসওয়ার্ড ছাড়া রিশিডিউল বা মার্কশিট উত্তোলন নিষিদ্ধ</span>
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isCandidateAuthenticating}
+                  className="w-full sm:w-auto px-8 py-3.5 bg-linear-to-r from-[#0B3B3C] via-teal-800 to-[#0B3B3C] hover:from-teal-900 hover:to-[#0B3B3C] text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-teal-950/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isCandidateAuthenticating ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4 text-amber-300" />
+                      <span>প্রার্থী লগইন করুন ও ওটিপি পাঠান</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Quick Helper to load candidate email from search */}
+              <div className="pt-6 border-t border-slate-100 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider font-mono">
+                    OR SELECT CANDIDATE FROM REPOSITORY:
+                  </p>
+                  <span className="text-[10px] text-slate-400">পাসওয়ার্ড প্রদান বাধ্যতামূলক</span>
+                </div>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by Passport / Name / Candidate ID to load email..."
+                    className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-teal-700 outline-none"
+                  />
+                </div>
+                {searchQuery.trim() && (
+                  <div className="border border-slate-200 rounded-2xl p-2 bg-slate-50/80 max-h-48 overflow-y-auto space-y-1 shadow-inner">
+                    {filteredCandidates.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-3 text-center">কোন প্রার্থী পাওয়া যায়নি</p>
+                    ) : (
+                      filteredCandidates.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => handleSelectCandidate(c)}
+                          className="w-full p-2.5 text-left bg-white hover:bg-teal-50/80 border border-slate-200 hover:border-teal-300 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-all shadow-2xs"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-900">{c.fullName}</p>
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              Passport: <span className="font-bold text-slate-700">{c.passportNumber}</span> | {c.email || c.candidateId}
+                            </p>
+                          </div>
+                          <span className="text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded-lg">
+                            ইমেইল লোড করুন
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </form>
+          ) : (
+            /* STEP 2: OTP VERIFICATION */
+            <form onSubmit={handleVerifyCandidateOtp} className="space-y-5 max-w-md bg-linear-to-b from-slate-50 to-slate-100/50 p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>ওটিপি কোড সফলভাবে পাঠানো হয়েছে</span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  প্রার্থীর ইমেইল: <span className="font-mono font-bold text-slate-900">{selectedCandidate?.email || candidateEmailInput}</span>
+                </p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  অনুগ্রহ করে প্রার্থীর ইনবক্স অথবা স্প্যাম ফোল্ডার থেকে ৬-সংখ্যার ওটিপি কোডটি সংগ্রহ করে নিচে দিন।
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  ৬-সংখ্যার ওটিপি কোড (Enter 6-Digit OTP) *
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={candidateOtpInput}
+                  onChange={(e) => setCandidateOtpInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="• • • • • •"
+                  className="w-full text-center tracking-[0.4em] text-2xl font-mono font-black py-3 bg-white border-2 border-teal-600 rounded-xl focus:ring-4 focus:ring-teal-700/10 outline-none shadow-inner"
+                  required
+                />
+                <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5">
+                  <span className="font-mono font-semibold">
+                    মেয়াদ: {candidateOtpCountdown > 0 ? `${candidateOtpCountdown} সেকেন্ড` : <span className="text-rose-600 font-bold">মেয়াদোত্তীর্ণ</span>}
+                  </span>
+                  {candidateOtpCountdown === 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleResendCandidateOtp}
+                      className="text-teal-700 font-bold hover:underline cursor-pointer"
+                    >
+                      পুনরায় ওটিপি পাঠান
+                    </button>
+                  ) : (
+                    <span className="text-slate-400">পুনরায় পাঠাতে অপেক্ষা করুন</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCandidateAuthStep('login')}
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 border border-slate-300 rounded-xl cursor-pointer"
+                >
+                  ফিরে যান
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>ওটিপি যাচাই করে প্রার্থী আনলক করুন</span>
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render Authenticated Candidate Overview Card
+  const renderAuthenticatedCandidateCard = () => {
+    if (!authCandidate) return null;
+    return (
+      <div className="bg-linear-to-r from-teal-50 via-white to-teal-50/40 border-2 border-teal-600 rounded-3xl p-5 sm:p-6 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                <BadgeCheck className="w-3.5 h-3.5" />
+                প্রার্থী লগইন সক্রিয় (AUTHENTICATED)
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-[#0B3B3C] text-teal-100 text-[10px] font-bold font-mono tracking-wider">
+                ID: {authCandidate.candidateId}
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200">
+                ট্রেড: {authCandidate.trade}
+              </span>
+            </div>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight">{authCandidate.fullName}</h3>
+            <p className="text-xs text-slate-600 flex flex-wrap items-center gap-2">
+              <span>পাসপোর্ট: <b className="font-mono text-slate-800">{authCandidate.passportNumber}</b></span>
+              <span>·</span>
+              <span>মোবাইল: <b className="text-slate-800">{authCandidate.mobileNumber}</b></span>
+              <span>·</span>
+              <span>ইমেইল: <b className="font-mono text-slate-800">{authCandidate.email}</b></span>
+            </p>
+          </div>
+
+          <div className="flex sm:flex-col items-end justify-between gap-2.5 shrink-0">
+            <div className="sm:text-right bg-white p-3 rounded-xl border border-teal-200 shadow-2xs">
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider font-mono">CURRENT SCHEDULE</p>
+              <p className="text-xs font-black text-rose-700 flex items-center sm:justify-end gap-1">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>{authCandidate.examDate || 'তারিখ নির্ধারিত নেই'}</span>
+              </p>
+              <p className="text-[11px] text-slate-600 truncate max-w-[210px]">
+                {authCandidate.examCenter || 'কেন্দ্র নির্ধারিত নেই'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCandidateLogout}
+              className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-2xs"
+              title="অন্য প্রার্থী লগইন করতে বর্তমান প্রার্থী লগআউট করুন"
+            >
+              অন্য প্রার্থী লগইন করুন (লগআউট)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -438,94 +925,204 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
         {/* TAB 1: RESCHEDULE MODULE */}
         {activeTab === 'reschedule' && (
           <div className="space-y-6">
-            {/* Search Card */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Search className="w-4 h-4 text-teal-700" />
-                    <span>প্রার্থী খুঁজুন (Search Candidate for Reschedule)</span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    ক্যান্ডিডেট আইডি, পাসপোর্ট নম্বর বা মোবাইল নম্বর দিয়ে সার্চ করুন
-                  </p>
-                </div>
+            {/* If Candidate NOT Authenticated: Show Candidate Login Form */}
+            {!authCandidate ? (
+              <div className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-200 shadow-xs space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-800 shrink-0">
+                      <ShieldCheck className="w-5 h-5 text-teal-700" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">
+                        {candidateAuthStep === 'login'
+                          ? 'প্রার্থী ভেরিফিকেশন (রিশিডিউল)'
+                          : 'ওটিপি ভেরিফিকেশন'}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {candidateAuthStep === 'login'
+                          ? 'রিশিডিউলের পূর্বে প্রার্থীর তথ্য ও ওটিপি কোড যাচাই করুন'
+                          : 'প্রার্থীর ইমেইলে প্রেরিত কোড দিয়ে একাউন্ট আনলক করুন'}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Candidate ID / Passport / Phone..."
-                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Search Results Dropdown / Pills */}
-              {searchQuery.trim() && (
-                <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-56 overflow-y-auto space-y-1.5">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    সার্চের ফলাফল ({filteredCandidates.length}):
-                  </p>
-                  {filteredCandidates.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-2 text-center">কোন প্রার্থী পাওয়া যায়নি</p>
-                  ) : (
-                    filteredCandidates.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => handleSelectCandidate(c)}
-                        className={`w-full p-2.5 text-left rounded-lg transition-all flex items-center justify-between text-xs cursor-pointer ${
-                          selectedCandidate?.id === c.id
-                            ? 'bg-teal-900 text-white'
-                            : 'bg-white hover:bg-teal-50 border border-slate-200'
-                        }`}
-                      >
-                        <div>
-                          <p className="font-bold">{c.fullName}</p>
-                          <p className={`text-[11px] ${selectedCandidate?.id === c.id ? 'text-teal-200' : 'text-slate-500'}`}>
-                            ID: <span className="font-mono">{c.candidateId}</span> | Passport: {c.passportNumber} | Trade: {c.trade}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{c.examDate || 'No Date'}</p>
-                          <p className={`text-[10px] ${selectedCandidate?.id === c.id ? 'text-teal-200' : 'text-slate-400'}`}>
-                            {c.examCenter || 'No Center'}
-                          </p>
-                        </div>
-                      </button>
-                    ))
+                  {selectedCandidate && (
+                    <div className="hidden sm:block text-right">
+                      <p className="text-[10px] text-slate-400 font-medium">নির্বাচিত প্রার্থী:</p>
+                      <p className="text-xs font-semibold text-slate-800">{selectedCandidate.fullName}</p>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Selected Candidate Reschedule Workstation */}
-            {selectedCandidate ? (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-6 space-y-6">
+                {candidateAuthError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{candidateAuthError}</span>
+                  </div>
+                )}
+
+                {candidateAuthStep === 'login' ? (
+                  <form onSubmit={handleInitiateCandidateLogin} className="space-y-4 max-w-lg">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        ইমেইল বা ক্যান্ডিডেট আইডি
+                      </label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={candidateEmailInput}
+                          onChange={(e) => setCandidateEmailInput(e.target.value)}
+                          placeholder="ইমেইল বা ক্যান্ডিডেট আইডি লিখুন"
+                          className="w-full pl-10 pr-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 outline-none transition-all placeholder:text-slate-400"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        পাসওয়ার্ড
+                      </label>
+                      <div className="relative">
+                        <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showCandidatePassword ? 'text' : 'password'}
+                          value={candidatePasswordInput}
+                          onChange={(e) => setCandidatePasswordInput(e.target.value)}
+                          placeholder="পাসওয়ার্ড লিখুন"
+                          className="w-full pl-10 pr-10 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 outline-none transition-all placeholder:text-slate-400"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCandidatePassword(!showCandidatePassword)}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                          title={showCandidatePassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showCandidatePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={isCandidateAuthenticating}
+                        className="w-full sm:w-auto px-6 py-2.5 bg-[#0B3B3C] hover:bg-teal-900 text-white font-semibold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isCandidateAuthenticating ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <Lock className="w-3.5 h-3.5 text-amber-300" />
+                            <span>যাচাই করুন ও ওটিপি পাঠান</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  /* STEP 2: OTP VERIFICATION */
+                  <form onSubmit={handleVerifyCandidateOtp} className="space-y-4 max-w-sm py-2">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-slate-800">
+                        প্রার্থীর ইমেইলে ৬-সংখ্যার কোড পাঠানো হয়েছে:
+                      </p>
+                      <p className="text-xs font-medium text-teal-800">
+                        {selectedCandidate?.email || candidateEmailInput}
+                      </p>
+                    </div>
+
+                    <div>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={candidateOtpInput}
+                        onChange={(e) => setCandidateOtpInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="0 0 0 0 0 0"
+                        className="w-full text-center tracking-[0.4em] text-lg font-mono font-bold py-2.5 bg-white border border-slate-300 rounded-xl focus:border-teal-600 outline-none"
+                        autoFocus
+                        required
+                      />
+                      <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
+                        <span>
+                          মেয়াদ: {candidateOtpCountdown > 0 ? `${candidateOtpCountdown}s` : <span className="text-rose-600 font-semibold">মেয়াদোত্তীর্ণ</span>}
+                        </span>
+                        {candidateOtpCountdown === 0 && (
+                          <button
+                            type="button"
+                            onClick={handleResendCandidateOtp}
+                            className="text-teal-700 font-semibold hover:underline cursor-pointer"
+                          >
+                            পুনরায় পাঠান
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setCandidateAuthStep('login')}
+                        className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                      >
+                        ফিরে যান
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-2.5 bg-[#0B3B3C] hover:bg-teal-900 text-white font-semibold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                        <span>যাচাই সম্পন্ন করুন</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ) : (
+              /* If Candidate Authenticated: Show Workstation */
+              <div className="bg-white rounded-2xl border-2 border-teal-600 shadow-md p-6 space-y-6">
                 {/* Candidate Overview Card */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between gap-4">
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between gap-4">
                   <div className="space-y-1">
-                    <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 text-[10px] font-bold uppercase tracking-wider font-mono">
-                      {selectedCandidate.candidateId}
-                    </span>
-                    <h3 className="text-lg font-black text-slate-900">{selectedCandidate.fullName}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        প্রার্থী লগইন সক্রিয়
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-teal-800 text-teal-100 text-[10px] font-bold uppercase tracking-wider font-mono">
+                        {authCandidate.candidateId}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900">{authCandidate.fullName}</h3>
                     <p className="text-xs text-slate-600">
-                      পাসপোর্ট: <span className="font-mono font-semibold">{selectedCandidate.passportNumber}</span> | মোবাইল: {selectedCandidate.mobileNumber}
+                      পাসপোর্ট: <span className="font-mono font-semibold">{authCandidate.passportNumber}</span> | মোবাইল: {authCandidate.mobileNumber} | ইমেইল: {authCandidate.email}
                     </p>
                   </div>
 
-                  <div className="sm:text-right space-y-1 bg-white p-3 rounded-lg border border-slate-200">
-                    <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">বর্তমান পরীক্ষার শিডিউল:</p>
-                    <p className="text-sm font-bold text-rose-700 flex items-center sm:justify-end gap-1.5">
-                      <Calendar className="w-4 h-4" />
-                      <span>{selectedCandidate.examDate || 'তারিখ নির্ধারিত নেই'}</span>
-                    </p>
-                    <p className="text-xs text-slate-600 truncate max-w-[240px]">
-                      {selectedCandidate.examCenter || 'কেন্দ্র নির্ধারিত নেই'}
-                    </p>
+                  <div className="flex sm:flex-col items-end justify-between gap-2">
+                    <div className="sm:text-right bg-white p-2.5 rounded-lg border border-slate-200">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase">বর্তমান পরীক্ষার শিডিউল:</p>
+                      <p className="text-xs font-bold text-rose-700 flex items-center sm:justify-end gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>{authCandidate.examDate || 'তারিখ নির্ধারিত নেই'}</span>
+                      </p>
+                      <p className="text-[11px] text-slate-600 truncate max-w-[200px]">
+                        {authCandidate.examCenter || 'কেন্দ্র নির্ধারিত নেই'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCandidateLogout}
+                      className="px-3 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                      title="অন্য প্রার্থী লগইন করতে বর্তমান প্রার্থী লগআউট করুন"
+                    >
+                      অন্য প্রার্থী লগইন করুন (লগআউট)
+                    </button>
                   </div>
                 </div>
 
@@ -611,7 +1208,7 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                 <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setSelectedCandidate(null)}
+                    onClick={handleCandidateLogout}
                     className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
                   >
                     বাতিল করুন (Cancel)
@@ -678,14 +1275,6 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center text-slate-500 space-y-2">
-                <Calendar className="w-12 h-12 mx-auto text-slate-300" />
-                <p className="text-sm font-bold text-slate-700">কোন প্রার্থী নির্বাচিত করা হয়নি</p>
-                <p className="text-xs text-slate-400">
-                  উপরে সার্চ বক্সে প্রার্থীর আইডি বা পাসপোর্ট নম্বর লিখে সার্চ করে সিলেক্ট করুন।
-                </p>
-              </div>
             )}
           </div>
         )}
@@ -693,169 +1282,361 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
         {/* TAB 2: MARKSHEET MODULE */}
         {activeTab === 'marksheet' && (
           <div className="space-y-6">
-            {/* Search Card for Marksheet */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <FileCheck2 className="w-4 h-4 text-teal-700" />
-                    <span>মার্কশিট উত্তোলন ও প্রিন্ট (Pull Official Marksheet)</span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    ক্যান্ডিডেট আইডি বা পাসপোর্ট নম্বর দিয়ে সার্চ করুন (খরচ: ১ ক্রেডিট)
-                  </p>
-                </div>
+            {/* If Candidate NOT Authenticated: Show Clean Candidate Login Form */}
+            {!authCandidate ? (
+              <div className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-200 shadow-xs space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-800 shrink-0">
+                      <ShieldCheck className="w-5 h-5 text-teal-700" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">
+                        {candidateAuthStep === 'login'
+                          ? 'প্রার্থী ভেরিফিকেশন (মার্কশিট)'
+                          : 'ওটিপি ভেরিফিকেশন'}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {candidateAuthStep === 'login'
+                          ? 'মার্কশিট উত্তোলনের জন্য প্রার্থীর তথ্য ও ওটিপি কোড যাচাই করুন'
+                          : 'প্রার্থীর ইমেইলে প্রেরিত কোড দিয়ে একাউন্ট আনলক করুন'}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={marksheetSearchQuery}
-                    onChange={(e) => setMarksheetSearchQuery(e.target.value)}
-                    placeholder="Candidate ID / Passport..."
-                    className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Search results */}
-              {marksheetSearchQuery.trim() && (
-                <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 max-h-56 overflow-y-auto space-y-1.5">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    সার্চের ফলাফল ({filteredMarksheetCandidates.length}):
-                  </p>
-                  {filteredMarksheetCandidates.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-2 text-center">কোন প্রার্থী পাওয়া যায়নি</p>
-                  ) : (
-                    filteredMarksheetCandidates.map((c) => (
-                      <div
-                        key={c.id}
-                        className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <p className="font-bold text-slate-900">{c.fullName}</p>
-                          <p className="text-[11px] text-slate-500 font-mono">
-                            ID: {c.candidateId} | Passport: {c.passportNumber} | Trade: {c.trade}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handlePullMarksheet(c)}
-                          disabled={isPullingMarksheet || operatorCredits < 1}
-                          className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-amber-950 font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                        >
-                          <Coins className="w-3.5 h-3.5" />
-                          <span>১ ক্রেডিট দিয়ে মার্কশিট তুলুন</span>
-                        </button>
-                      </div>
-                    ))
+                  {selectedCandidate && (
+                    <div className="hidden sm:block text-right">
+                      <p className="text-[10px] text-slate-400 font-medium">নির্বাচিত প্রার্থী:</p>
+                      <p className="text-xs font-semibold text-slate-800">{selectedCandidate.fullName}</p>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Unlocked Marksheet Preview */}
-            {unlockedMarksheet && (
-              <div className="bg-white rounded-2xl border-2 border-teal-600 shadow-xl p-6 sm:p-8 space-y-6 animate-in zoom-in-95">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-800">
-                      <ShieldCheck className="w-6 h-6" />
-                    </div>
+                {candidateAuthError && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{candidateAuthError}</span>
+                  </div>
+                )}
+
+                {candidateAuthStep === 'login' ? (
+                  <form onSubmit={handleInitiateCandidateLogin} className="space-y-4 max-w-lg">
                     <div>
-                      <h3 className="text-lg font-black text-slate-900 uppercase">
-                        অফিসিয়াল মার্কশিট ও ফলাফল ভাউচার
-                      </h3>
-                      <p className="text-xs text-slate-500 font-mono">
-                        Verification Ref: {unlockedMarksheet.referenceId}
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        ইমেইল বা ক্যান্ডিডেট আইডি
+                      </label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={candidateEmailInput}
+                          onChange={(e) => setCandidateEmailInput(e.target.value)}
+                          placeholder="ইমেইল বা ক্যান্ডিডেট আইডি লিখুন"
+                          className="w-full pl-10 pr-4 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 outline-none transition-all placeholder:text-slate-400"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                        পাসওয়ার্ড
+                      </label>
+                      <div className="relative">
+                        <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type={showCandidatePassword ? 'text' : 'password'}
+                          value={candidatePasswordInput}
+                          onChange={(e) => setCandidatePasswordInput(e.target.value)}
+                          placeholder="পাসওয়ার্ড লিখুন"
+                          className="w-full pl-10 pr-10 py-2.5 text-xs bg-white border border-slate-200 rounded-xl focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 outline-none transition-all placeholder:text-slate-400"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCandidatePassword(!showCandidatePassword)}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                          title={showCandidatePassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showCandidatePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={isCandidateAuthenticating}
+                        className="w-full sm:w-auto px-6 py-2.5 bg-[#0B3B3C] hover:bg-teal-900 text-white font-semibold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isCandidateAuthenticating ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <Lock className="w-3.5 h-3.5 text-amber-300" />
+                            <span>যাচাই করুন ও ওটিপি পাঠান</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  /* STEP 2: OTP VERIFICATION */
+                  <form onSubmit={handleVerifyCandidateOtp} className="space-y-4 max-w-sm py-2">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-slate-800">
+                        প্রার্থীর ইমেইলে ৬-সংখ্যার কোড পাঠানো হয়েছে:
+                      </p>
+                      <p className="text-xs font-medium text-teal-800">
+                        {selectedCandidate?.email || candidateEmailInput}
                       </p>
                     </div>
-                  </div>
 
-                  <button
-                    onClick={() => window.print()}
-                    className="px-4 py-2 bg-[#0B3B3C] hover:bg-teal-900 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md cursor-pointer"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>প্রিন্ট / ডাউনলোড (Print Marksheet)</span>
-                  </button>
-                </div>
-
-                {/* Candidate & Exam Metadata */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">প্রার্থীর নাম</p>
-                    <p className="font-bold text-slate-900">{unlockedMarksheet.candidateName}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">ক্যান্ডিডেট আইডি</p>
-                    <p className="font-mono font-bold text-slate-900">{unlockedMarksheet.candidateId}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">ট্রেড / প্রফেশন</p>
-                    <p className="font-bold text-slate-900">{unlockedMarksheet.trade}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">পরীক্ষার তারিখ</p>
-                    <p className="font-bold text-slate-900">{unlockedMarksheet.examDate}</p>
-                  </div>
-                </div>
-
-                {/* Score Breakdown Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-[#0B3B3C] text-white font-bold uppercase">
-                      <tr>
-                        <th className="p-3">অ্যাসেসমেন্ট বিষয় (Assessment Component)</th>
-                        <th className="p-3 text-center">সর্বোচ্চ নম্বর</th>
-                        <th className="p-3 text-center">প্রাপ্ত নম্বর</th>
-                        <th className="p-3 text-center">শতাংশ (%)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 border-b border-slate-200 font-medium">
-                      <tr>
-                        <td className="p-3 font-semibold">থিওরি টেস্ট (Theory & Safety Test)</td>
-                        <td className="p-3 text-center">100</td>
-                        <td className="p-3 text-center font-bold text-slate-900">{unlockedMarksheet.theoryMarks}</td>
-                        <td className="p-3 text-center">{unlockedMarksheet.theoryMarks}%</td>
-                      </tr>
-                      <tr>
-                        <td className="p-3 font-semibold">ব্যবহারিক পরীক্ষা (Practical Workshop)</td>
-                        <td className="p-3 text-center">100</td>
-                        <td className="p-3 text-center font-bold text-slate-900">{unlockedMarksheet.practicalMarks}</td>
-                        <td className="p-3 text-center">{unlockedMarksheet.practicalMarks}%</td>
-                      </tr>
-                      <tr className="bg-slate-50 font-bold">
-                        <td className="p-3 text-slate-900 uppercase">সর্বমোট ফলাফল (Total Result)</td>
-                        <td className="p-3 text-center">200</td>
-                        <td className="p-3 text-center text-teal-800 text-sm font-black">{unlockedMarksheet.totalMarks}</td>
-                        <td className="p-3 text-center text-teal-800 text-sm font-black">
-                          {unlockedMarksheet.percentage || Math.round((unlockedMarksheet.totalMarks / 200) * 100)}%
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Result Status Badge */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black">
-                      ✓
-                    </div>
                     <div>
-                      <p className="text-xs font-bold text-emerald-950 uppercase">পরীক্ষার চূড়ান্ত মূল্যায়ন:</p>
-                      <p className="text-sm font-black text-emerald-700">
-                        {unlockedMarksheet.resultStatus === 'PASS' ? 'PASSED / উত্তীর্ণ (CERTIFIED)' : 'FAILED'}
-                      </p>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={candidateOtpInput}
+                        onChange={(e) => setCandidateOtpInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="0 0 0 0 0 0"
+                        className="w-full text-center tracking-[0.4em] text-lg font-mono font-bold py-2.5 bg-white border border-slate-300 rounded-xl focus:border-teal-600 outline-none"
+                        autoFocus
+                        required
+                      />
+                      <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
+                        <span>
+                          মেয়াদ: {candidateOtpCountdown > 0 ? `${candidateOtpCountdown}s` : <span className="text-rose-600 font-semibold">মেয়াদোত্তীর্ণ</span>}
+                        </span>
+                        {candidateOtpCountdown === 0 && (
+                          <button
+                            type="button"
+                            onClick={handleResendCandidateOtp}
+                            className="text-teal-700 font-semibold hover:underline cursor-pointer"
+                          >
+                            পুনরায় পাঠান
+                          </button>
+                        )}
+                      </div>
                     </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setCandidateAuthStep('login')}
+                        className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                      >
+                        ফিরে যান
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 py-2.5 bg-[#0B3B3C] hover:bg-teal-900 text-white font-semibold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                        <span>যাচাই সম্পন্ন করুন</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ) : (
+              /* If Candidate Authenticated: Show Marksheet Workstation */
+              <div className="bg-white rounded-2xl border-2 border-teal-600 shadow-md p-6 space-y-6">
+                {/* Candidate Overview Card */}
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex flex-col sm:flex-row justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        প্রার্থী লগইন সক্রিয়
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-teal-800 text-teal-100 text-[10px] font-bold uppercase tracking-wider font-mono">
+                        {authCandidate.candidateId}
+                      </span>
+                    </div>
+                    <p className="text-base font-black text-slate-900">{authCandidate.fullName}</p>
+                    <p className="text-xs text-slate-600">
+                      পাসপোর্ট: <b>{authCandidate.passportNumber}</b> | ট্রেড: <b>{authCandidate.trade}</b> | কেন্দ্র: <b>{authCandidate.examCenter || 'Certified TTC'}</b>
+                    </p>
                   </div>
 
-                  <div className="text-xs text-slate-500 text-right">
-                    <p>ইস্যুকারী: {unlockedMarksheet.issuedBy}</p>
-                    <p>উত্তোলনকারী অপারেটর: <b>{operator?.fullName}</b></p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleCandidateLogout}
+                      className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <User className="w-3.5 h-3.5 text-slate-500" />
+                      <span>অন্য প্রার্থীর মার্কশিট তুলুন (লগআউট)</span>
+                    </button>
                   </div>
                 </div>
+
+                {/* Marksheet Pull Action Card */}
+                {(!unlockedMarksheet || unlockedMarksheet.candidateId !== authCandidate.candidateId) ? (
+                  <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-sm">
+                          <FileCheck2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">
+                            অফিসিয়াল মার্কশিট উত্তোলন (Pull Official Marksheet)
+                          </h4>
+                          <p className="text-xs text-slate-500">
+                            প্রার্থীর লগইন যাচাই সম্পন্ন হয়েছে। ১ ক্রেডিট কর্তন করে অফিসিয়াল মার্কশিট ও ফলাফল ভাউচার জেনারেট করুন।
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="px-3 py-1 bg-amber-100 border border-amber-300 rounded-lg text-amber-900 font-bold text-xs">
+                          খরচ: ১ ক্রেডিট
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
+                      <span>আপনার বর্তমান ব্যালেন্স: <b>{operatorCredits} Credits</b></span>
+                      <span>কাজ সম্পন্ন হলে অবশিষ্ট থাকবে: <b>{Math.max(0, operatorCredits - 1)} Credits</b></span>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleCandidateLogout}
+                        className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl cursor-pointer"
+                      >
+                        বাতিল করুন
+                      </button>
+
+                      <button
+                        id="btn-pull-official-marksheet"
+                        type="button"
+                        onClick={() => handlePullMarksheet(authCandidate)}
+                        disabled={isPullingMarksheet || operatorCredits < 1}
+                        className="px-6 py-3 bg-gradient-to-r from-teal-700 to-[#0B3B3C] hover:from-teal-800 hover:to-teal-900 text-white font-bold text-xs rounded-xl shadow-lg shadow-teal-900/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {isPullingMarksheet ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <Coins className="w-4 h-4 text-amber-300" />
+                            <span>১ ক্রেডিট দিয়ে মার্কশিট উত্তোলন নিশ্চিত করুন</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Unlocked Marksheet Preview */}
+                {unlockedMarksheet && unlockedMarksheet.candidateId === authCandidate.candidateId && (
+                  <div className="bg-white rounded-2xl border-2 border-teal-600 shadow-xl p-6 sm:p-8 space-y-6 animate-in zoom-in-95">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-800">
+                          <ShieldCheck className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-black text-slate-900 uppercase">
+                            অফিসিয়াল মার্কশিট ও ফলাফল ভাউচার
+                          </h3>
+                          <p className="text-xs text-slate-500 font-mono">
+                            Verification Ref: {unlockedMarksheet.referenceId}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => window.print()}
+                          className="px-4 py-2 bg-[#0B3B3C] hover:bg-teal-900 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md cursor-pointer transition-colors"
+                        >
+                          <Printer className="w-4 h-4" />
+                          <span>প্রিন্ট / ডাউনলোড (Print Marksheet)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Candidate & Exam Metadata */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">প্রার্থীর নাম</p>
+                        <p className="font-bold text-slate-900">{unlockedMarksheet.candidateName}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">ক্যান্ডিডেট আইডি</p>
+                        <p className="font-mono font-bold text-slate-900">{unlockedMarksheet.candidateId}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">ট্রেড / প্রফেশন</p>
+                        <p className="font-bold text-slate-900">{unlockedMarksheet.trade}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">পরীক্ষার তারিখ</p>
+                        <p className="font-bold text-slate-900">{unlockedMarksheet.examDate}</p>
+                      </div>
+                    </div>
+
+                    {/* Score Breakdown Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-[#0B3B3C] text-white font-bold uppercase">
+                          <tr>
+                            <th className="p-3">অ্যাসেসমেন্ট বিষয় (Assessment Component)</th>
+                            <th className="p-3 text-center">সর্বোচ্চ নম্বর</th>
+                            <th className="p-3 text-center">প্রাপ্ত নম্বর</th>
+                            <th className="p-3 text-center">শতাংশ (%)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 border-b border-slate-200 font-medium">
+                          <tr>
+                            <td className="p-3 font-semibold">থিওরি টেস্ট (Theory & Safety Test)</td>
+                            <td className="p-3 text-center">100</td>
+                            <td className="p-3 text-center font-bold text-slate-900">{unlockedMarksheet.theoryMarks}</td>
+                            <td className="p-3 text-center">{unlockedMarksheet.theoryMarks}%</td>
+                          </tr>
+                          <tr>
+                            <td className="p-3 font-semibold">ব্যবহারিক পরীক্ষা (Practical Workshop)</td>
+                            <td className="p-3 text-center">100</td>
+                            <td className="p-3 text-center font-bold text-slate-900">{unlockedMarksheet.practicalMarks}</td>
+                            <td className="p-3 text-center">{unlockedMarksheet.practicalMarks}%</td>
+                          </tr>
+                          <tr className="bg-slate-50 font-bold">
+                            <td className="p-3 text-slate-900 uppercase">সর্বমোট ফলাফল (Total Result)</td>
+                            <td className="p-3 text-center">200</td>
+                            <td className="p-3 text-center text-teal-800 text-sm font-black">{unlockedMarksheet.totalMarks}</td>
+                            <td className="p-3 text-center text-teal-800 text-sm font-black">
+                              {unlockedMarksheet.percentage || Math.round((unlockedMarksheet.totalMarks / 200) * 100)}%
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Result Status Badge */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black">
+                          ✓
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-emerald-950 uppercase">পরীক্ষার চূড়ান্ত মূল্যায়ন:</p>
+                          <p className="text-sm font-black text-emerald-700">
+                            {unlockedMarksheet.resultStatus === 'PASS' ? 'PASSED / উত্তীর্ণ (CERTIFIED)' : 'FAILED'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-500 text-right">
+                        <p>ইস্যুকারী: {unlockedMarksheet.issuedBy}</p>
+                        <p>উত্তোলনকারী অপারেটর: <b>{operator?.fullName}</b></p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -25,6 +25,11 @@ import {
   updateOperatorCredits,
   createOperatorUser,
 } from '../services/apiService';
+import {
+  persistCandidateRegistration,
+  persistOperatorRegistration,
+  verifyCredentialsStrict,
+} from '../services/credentialService';
 import { generateCandidateId } from '../utils/rules';
 
 const SESSION_STORAGE_KEY = 'takamul_candidate_portal_auth_session';
@@ -52,7 +57,7 @@ interface AuthContextType {
   operatorCredits: number;
   isLoading: boolean;
   hasAdminSetup: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<'admin' | 'operator' | 'candidate'>;
   loginCandidateDirect: (cand: Candidate) => void;
   loginOperatorDirect: (op: OperatorUser) => void;
   updateCurrentCandidate: (cand: Candidate) => void;
@@ -228,137 +233,141 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (identifier: string, password: string) => {
     setIsLoading(true);
     const cleanIdentifier = identifier.trim();
+    const cleanPassword = password.trim();
+
+    if (!cleanIdentifier) {
+      setIsLoading(false);
+      throw new Error('অনুগ্রহ করে ইমেইল বা ইউজারনেম লিখুন (Please enter your email or username).');
+    }
+
+    if (!cleanPassword) {
+      setIsLoading(false);
+      throw new Error('অনুগ্রহ করে পাসওয়ার্ড লিখুন (Please enter your password).');
+    }
 
     try {
-      let firebaseSuccess = false;
+      // 1. Strictly verify credentials against registered users & password
+      const verifyResult = await verifyCredentialsStrict(cleanIdentifier, cleanPassword);
 
-      // 1. Try Firebase Auth if looks like email
-      if (cleanIdentifier.includes('@')) {
-        try {
-          const cred = await signInWithEmailAndPassword(auth, cleanIdentifier, password);
-          await loadUserData(cred.user);
-          firebaseSuccess = true;
-          localStorage.setItem(
-            SESSION_STORAGE_KEY,
-            JSON.stringify({
-              type: userProfile?.role || 'candidate',
-              uid: cred.user.uid,
-              email: cred.user.email,
-              identifier: cleanIdentifier,
-            })
-          );
-          return;
-        } catch (fbErr: any) {
-          console.warn(
-            'Firebase Auth signIn unavailable or failed (' +
-              (fbErr?.code || fbErr?.message) +
-              '). Using seamless portal credential lookup.'
-          );
-          // If operation-not-allowed or user-not-found, gracefully continue to candidate/admin database lookup
-        }
+      if (!verifyResult.success) {
+        throw new Error(verifyResult.error || 'লগইন ব্যর্থ হয়েছে। সঠিক ইমেইল ও পাসওয়ার্ড প্রদান করুন।');
       }
 
-      if (!firebaseSuccess) {
-        // 2. Check Operator / User database (Agency users with credits)
-        const opUser = await findOperatorForAuth(cleanIdentifier);
-        if (opUser) {
-          if (!opUser.isActive) {
-            throw new Error('আপনার ইউজার একাউন্টটি সাময়িকভাবে স্থগিত বা নিষ্ক্রিয় করা হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।');
-          }
+      // 2. Handle Operator Login
+      if (verifyResult.role === 'operator') {
+        const opUser = verifyResult.user as OperatorUser;
+        const opProfile: UserProfile = {
+          uid: opUser.uid || opUser.id,
+          email: opUser.email,
+          role: 'operator',
+          fullName: opUser.fullName,
+          createdAt: opUser.createdAt,
+        };
+        const mockUser = {
+          uid: opUser.uid || opUser.id,
+          email: opUser.email,
+          displayName: opUser.fullName,
+        } as unknown as FirebaseUser;
 
-          const opProfile: UserProfile = {
-            uid: opUser.uid,
+        setCurrentUser(mockUser);
+        setUserProfile(opProfile);
+        setOperator(opUser);
+        setCandidate(null);
+
+        localStorage.setItem(
+          SESSION_STORAGE_KEY,
+          JSON.stringify({
+            type: 'operator',
+            uid: opUser.uid || opUser.id,
             email: opUser.email,
-            role: 'operator',
-            fullName: opUser.fullName,
-            createdAt: opUser.createdAt,
-          };
-          const mockUser = {
-            uid: opUser.uid,
-            email: opUser.email,
-            displayName: opUser.fullName,
-          } as unknown as FirebaseUser;
+            identifier: cleanIdentifier,
+          })
+        );
+        return 'operator';
+      }
 
-          setCurrentUser(mockUser);
-          setUserProfile(opProfile);
-          setOperator(opUser);
-          setCandidate(null);
+      // 3. Handle Candidate Login
+      if (verifyResult.role === 'candidate') {
+        const cand = verifyResult.user as Candidate;
+        const candUid = cand.uid || cand.id;
+        const profile: UserProfile = {
+          uid: candUid,
+          email: cand.email,
+          role: 'candidate',
+          fullName: cand.fullName,
+          candidateId: cand.candidateId,
+          createdAt: cand.createdAt,
+        };
+        const mockUser = {
+          uid: candUid,
+          email: cand.email,
+          displayName: cand.fullName,
+        } as unknown as FirebaseUser;
 
-          localStorage.setItem(
-            SESSION_STORAGE_KEY,
-            JSON.stringify({
-              type: 'operator',
-              uid: opUser.uid,
-              email: opUser.email,
-              identifier: cleanIdentifier,
-            })
-          );
-          return;
-        }
+        setCurrentUser(mockUser);
+        setUserProfile(profile);
+        setCandidate(cand);
+        setOperator(null);
 
-        // 3. Check Candidate database by Email, Candidate ID, or Passport Number
-        const cand = await findCandidateForAuth(cleanIdentifier);
-        if (cand) {
-          const candUid = cand.uid || cand.id;
-          const profile: UserProfile = {
+        localStorage.setItem(
+          SESSION_STORAGE_KEY,
+          JSON.stringify({
+            type: 'candidate',
             uid: candUid,
             email: cand.email,
-            role: 'candidate',
-            fullName: cand.fullName,
-            candidateId: cand.candidateId,
-            createdAt: cand.createdAt,
-          };
-          const mockUser = {
-            uid: candUid,
-            email: cand.email,
-            displayName: cand.fullName,
-          } as unknown as FirebaseUser;
+            identifier: cleanIdentifier,
+          })
+        );
+        return 'candidate';
+      }
 
-          setCurrentUser(mockUser);
-          setUserProfile(profile);
-          setCandidate(cand);
+      // 4. Handle Administrator Login
+      if (verifyResult.role === 'admin') {
+        const adminProfile = verifyResult.user as UserProfile;
+        const mockUser = {
+          uid: adminProfile.uid,
+          email: adminProfile.email,
+          displayName: adminProfile.fullName || 'Administrator',
+        } as unknown as FirebaseUser;
 
-          localStorage.setItem(
-            SESSION_STORAGE_KEY,
-            JSON.stringify({
-              type: 'candidate',
-              uid: candUid,
-              email: cand.email,
-              identifier: cleanIdentifier,
-            })
-          );
-          return;
-        }
+        setCurrentUser(mockUser);
+        setUserProfile(adminProfile);
+        setCandidate(null);
+        setOperator(null);
 
-        // 3. Check Admin database
-        const adminProfile = await findAdminForAuth(cleanIdentifier);
-        if (adminProfile) {
-          const mockUser = {
+        localStorage.setItem(
+          SESSION_STORAGE_KEY,
+          JSON.stringify({
+            type: 'admin',
             uid: adminProfile.uid,
             email: adminProfile.email,
-            displayName: adminProfile.fullName || 'Administrator',
-          } as unknown as FirebaseUser;
+            identifier: cleanIdentifier,
+          })
+        );
 
-          setCurrentUser(mockUser);
-          setUserProfile(adminProfile);
-          setCandidate(null);
-
-          localStorage.setItem(
-            SESSION_STORAGE_KEY,
-            JSON.stringify({
-              type: 'admin',
-              uid: adminProfile.uid,
-              email: adminProfile.email,
-              identifier: cleanIdentifier,
-            })
-          );
-          return;
+        if (adminProfile.uid === 'admin-rasel-master' || adminProfile.email === 'raselahmed231956@gmail.com') {
+          try {
+            await setDoc(
+              doc(db, 'admins', 'admin-rasel-master'),
+              {
+                uid: 'admin-rasel-master',
+                email: 'raselahmed231956@gmail.com',
+                name: 'Rasel Ahmed (Chief Administrator)',
+                role: 'admin',
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+            await setDoc(doc(db, 'users', 'admin-rasel-master'), adminProfile, { merge: true });
+          } catch (e) {
+            console.warn('Could not mirror super admin to Firestore:', e);
+          }
         }
 
-        throw new Error(
-          `No candidate or administrator account was found matching "${cleanIdentifier}". Please check your email or Candidate ID, or register as a new candidate.`
-        );
+        return 'admin';
       }
+
+      throw new Error('অপ্রত্যাশিত ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
     } finally {
       setIsLoading(false);
     }
@@ -421,6 +430,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         examCenterId: defaultCenterId,
         examCenter: defaultCenterName,
         examStatus: 'UPCOMING',
+        password: data.password,
+        passwordHash: data.password,
         createdAt: now,
       };
 
@@ -433,6 +444,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: 'candidate',
         fullName: data.fullName,
         candidateId: finalCandidateId,
+        password: data.password,
+        passwordHash: data.password,
         createdAt: now,
       };
       await setDoc(doc(db, 'users', uid), userProfileRecord);
@@ -443,6 +456,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: data.email,
         displayName: data.fullName,
       } as unknown as FirebaseUser;
+
+      // Securely persist candidate credentials in local vault & Firestore
+      await persistCandidateRegistration(fullCandidate, data.password);
 
       setCurrentUser(mockUser);
       setUserProfile(userProfileRecord);
@@ -483,11 +499,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdBy: 'self-register',
       });
 
+      // Securely persist operator credentials in local vault & Firestore
+      await persistOperatorRegistration(newOp, data.password);
+
       const profile: UserProfile = {
         uid: newOp.uid,
         email: newOp.email,
         role: 'operator',
         fullName: newOp.fullName,
+        password: data.password,
         createdAt: newOp.createdAt,
       };
 

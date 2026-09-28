@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Lock, ArrowRight, AlertCircle, Loader2, Mail, KeyRound, ArrowLeft, RefreshCw, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { findCandidateForAuth, getAllCandidates } from '../../services/apiService';
+import { verifyCredentialsStrict } from '../../services/credentialService';
 import { Candidate } from '../../types';
 import { useToast } from '../../components/Toast';
 
@@ -88,46 +89,49 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
     setError(null);
 
     const cleanEmail = username.trim();
+    const cleanPass = password.trim();
 
     if (!cleanEmail) {
-      setError('Please enter your email address (আপনার ইমেইল দিন)');
+      setError('অনুগ্রহ করে আপনার ইমেইল বা ক্যান্ডিডেট আইডি লিখুন (Please enter email or Candidate ID).');
+      return;
+    }
+
+    if (!cleanPass) {
+      setError('অনুগ্রহ করে আপনার পাসওয়ার্ড লিখুন (Please enter password).');
       return;
     }
 
     setIsLoading(true);
     try {
-      // 1. Check if admin credentials were entered
-      if (cleanEmail.toLowerCase().includes('admin') && password.trim()) {
+      // 1. Check if super administrator credentials were entered
+      if (cleanEmail === 'raselahmed231956@gmail.com' || cleanEmail.toLowerCase().includes('admin')) {
         try {
-          await login(cleanEmail, password.trim());
-          showToast('Administrator login successful', 'success');
-          onNavigate('admin-dashboard');
-          return;
-        } catch (adminErr) {
-          console.warn('Not admin auth, checking candidate auth...', adminErr);
+          const resRole = await login(cleanEmail, cleanPass);
+          if (resRole === 'admin') {
+            showToast('সুপার অ্যাডমিন হিসেবে সফলভাবে লগইন হয়েছে!', 'success');
+            onNavigate('admin-dashboard');
+            return;
+          }
+        } catch (adminErr: any) {
+          if (adminErr?.message?.includes('পাসওয়ার্ড') || adminErr?.message?.includes('password')) {
+            throw adminErr;
+          }
         }
       }
 
-      // 2. Lookup Candidate by email (or registered candidate info)
-      let candidate: Candidate | null = await findCandidateForAuth(cleanEmail);
-
-      if (!candidate) {
-        const allCandidates = await getAllCandidates();
-        candidate =
-          allCandidates.find(
-            (c) =>
-              c.email?.toLowerCase() === cleanEmail.toLowerCase() ||
-              c.candidateId?.toLowerCase() === cleanEmail.toLowerCase() ||
-              c.passportNumber?.toLowerCase() === cleanEmail.toLowerCase()
-          ) || null;
+      // 2. Strictly verify Candidate existence & password match
+      const verifyResult = await verifyCredentialsStrict(cleanEmail, cleanPass, ['candidate', 'admin']);
+      if (!verifyResult.success) {
+        throw new Error(verifyResult.error || 'তথ্য পাওয়া যায়নি অথবা পাসওয়ার্ড ভুল। সঠিক তথ্য দিন।');
       }
 
-      // If no valid admit/ticket holder candidate found: Reject strictly!
-      if (!candidate) {
-        throw new Error(
-          'তথ্য পাওয়া যায়নি (Record Not Found)। শুধুমাত্র যেসকল প্রার্থী কোনো সরকারি/বেসরকারি টিটিসিতে তাকামুল পরীক্ষার জন্য সিট কনফার্ম ও অ্যাডমিট/টিকিট তুলেছেন, তাদের তথ্যই সিস্টেমে সক্রিয় রয়েছে।'
-        );
+      if (verifyResult.role === 'admin') {
+        await login(cleanEmail, cleanPass);
+        onNavigate('admin-dashboard');
+        return;
       }
+
+      const candidate: Candidate = verifyResult.user;
 
       // 3. Generate OTP and send to candidate's registered email
       const newOtp = createSixDigitOtp();
@@ -150,7 +154,7 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
       showToast(`আপনার ইমেইলে ওটিপি কোড পাঠানো হয়েছে (${candEmail})। ইনবক্স অথবা স্প্যাম ফোল্ডার চেক করুন।`, 'success');
     } catch (err: any) {
       console.error('Login error:', err);
-      setError(err?.message || 'Invalid email address. Please try again.');
+      setError(err?.message || 'Invalid credentials. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -348,19 +352,6 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
                 <span>
                   <strong>প্রার্থী নীতি:</strong> যেসকল প্রার্থীর নাম ও পাসপোর্ট বাংলাদেশ টিটিসি তাকামুল এক্সাম সিস্টেমে ভেরিফাইড আছে, শুধুমাত্র তাদের নিজস্ব নিবন্ধিত ইমেইলেই ওটিপি কোড যাবে।
                 </span>
-              </div>
-
-              <div className="text-center pt-2">
-                <p className="text-xs text-slate-500">
-                  আপনি কি সিস্টেম এডমিন?{' '}
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('admin-login')}
-                    className="font-bold text-[#0B3B3C] hover:underline"
-                  >
-                    এডমিন লগইন পোর্টালে যান
-                  </button>
-                </p>
               </div>
             </div>
           </>

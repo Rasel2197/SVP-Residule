@@ -12,6 +12,8 @@ export interface UserProfile {
   role: UserRole;
   fullName?: string;
   candidateId?: string;
+  password?: string;
+  passwordHash?: string;
   createdAt: string;
 }
 
@@ -30,6 +32,8 @@ export interface Candidate {
   examCenterId?: string;
   examCenter?: string;
   examStatus: ExamStatus;
+  password?: string;
+  passwordHash?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -147,6 +151,8 @@ export interface OperatorUser {
   role: 'operator';
   credits: number;
   isActive: boolean;
+  password?: string;
+  passwordHash?: string;
   notes?: string;
   createdAt: string;
   updatedAt?: string;

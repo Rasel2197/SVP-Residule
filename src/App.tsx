@@ -68,7 +68,7 @@ const AppContent: React.FC = () => {
     if (adminViews.includes(view)) {
       if (!currentUser) {
         showToast('Please sign in to access the Administrator Portal.', 'error');
-        setCurrentView('admin-login');
+        setCurrentView('operator-login');
         return;
       }
       if (!isAdmin) {
@@ -99,14 +99,16 @@ const AppContent: React.FC = () => {
   React.useEffect(() => {
     if (!isLoading) {
       if (currentUser) {
-        if (isAdmin && (currentView === 'home' || currentView === 'operator-login' || currentView === 'operator-register' || currentView === 'admin-login' || currentView === 'candidate-login')) {
+        if (isAdmin && (currentView === 'home' || currentView === 'operator-login' || currentView === 'operator-register' || currentView === 'admin-login' || currentView === 'candidate-login' || currentView === 'operator-dashboard')) {
           setCurrentView('admin-dashboard');
-        } else if (isOperator && (currentView === 'home' || currentView === 'operator-login' || currentView === 'operator-register' || currentView === 'admin-login' || currentView === 'candidate-login')) {
+        } else if (isOperator && (currentView === 'home' || currentView === 'operator-login' || currentView === 'operator-register' || currentView === 'admin-login')) {
           setCurrentView('operator-dashboard');
+        } else if (isCandidate && (currentView === 'home' || currentView === 'operator-login' || currentView === 'operator-register' || currentView === 'admin-login' || currentView === 'candidate-login')) {
+          setCurrentView('candidate-dashboard');
         }
       }
     }
-  }, [currentUser, isAdmin, isOperator, isLoading]);
+  }, [currentUser, isAdmin, isOperator, isCandidate, isLoading]);
 
   if (isLoading) {
     return (

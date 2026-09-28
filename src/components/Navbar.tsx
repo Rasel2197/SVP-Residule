@@ -131,7 +131,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                 >
                   <Coins className="w-3.5 h-3.5 text-amber-300" />
-                  <span>অপারেটর ড্যাশবোর্ড (Workstation)</span>
+                  <span>অপারেটর ড্যাশবোর্ড</span>
+                </button>
+
+                <button
+                  id="nav-operator-candidate-login"
+                  onClick={() => handleNavClick('candidate-login')}
+                  className={`py-1.5 px-3 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    currentView === 'candidate-login'
+                      ? 'bg-teal-700 text-white font-bold'
+                      : 'text-teal-200 hover:text-white hover:bg-white/5 border border-teal-600/40'
+                  }`}
+                  title="প্রার্থী লগইন (ইমেইল ও পাসওয়ার্ড)"
+                >
+                  <User className="w-3.5 h-3.5 text-teal-300" />
+                  <span>প্রার্থী লগইন</span>
                 </button>
               </nav>
             )}
@@ -311,17 +325,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             ) : (
               <div className="flex items-center gap-2">
                 <button
-                  id="btn-nav-admin-login"
-                  onClick={() => handleNavClick('admin-login')}
+                  id="btn-nav-operator-login"
+                  onClick={() => handleNavClick('operator-login')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                    currentView === 'admin-login'
-                      ? 'bg-emerald-400 text-slate-900 font-bold shadow-xs'
-                      : 'bg-teal-900/60 hover:bg-teal-800 text-teal-200 border border-teal-600/40'
+                    currentView === 'operator-login' || currentView === 'operator-register'
+                      ? 'bg-amber-400 text-amber-950 font-bold shadow-xs'
+                      : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
                   }`}
-                  title="Official Administrator Portal"
+                  title="ইউজার লগইন"
                 >
-                  <Shield className="w-3.5 h-3.5 text-emerald-300" />
-                  <span>এডমিন</span>
+                  <Coins className="w-3.5 h-3.5 text-amber-300" />
+                  <span>ইউজার লগইন</span>
                 </button>
 
                 <a
@@ -386,6 +400,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>অপারেটর ড্যাশবোর্ড (রিশিডিউল ও মার্কশিট)</span>
                 </div>
                 <span>{operatorCredits} Cr</span>
+              </button>
+
+              <button
+                onClick={() => handleNavClick('candidate-login')}
+                className="w-full p-2.5 text-left rounded-xl bg-teal-800/80 hover:bg-teal-700 text-white font-semibold flex items-center gap-2 text-xs border border-teal-600/50 cursor-pointer"
+              >
+                <User className="w-4 h-4 text-teal-300" />
+                <span>প্রার্থী লগইন (Candidate Login)</span>
               </button>
 
               <a
