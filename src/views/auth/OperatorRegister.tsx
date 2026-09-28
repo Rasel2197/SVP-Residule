@@ -11,7 +11,8 @@ import {
   EyeOff,
   KeyRound,
   RefreshCw,
-  CheckCircle2,
+  Loader2,
+  Info,
 } from 'lucide-react';
 import { auth, db } from '../../firebase/config';
 import { signInWithPhoneNumber, RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
@@ -33,8 +34,8 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
   const { registerOperator } = useAuth();
   const { showToast } = useToast();
 
-  // Mode: 'phone' or 'email'
-  const [contactType, setContactType] = useState<'phone' | 'email'>('phone');
+  // Mode: 'email' or 'phone' (Default to email for 100% reliable instant delivery)
+  const [contactType, setContactType] = useState<'email' | 'phone'>('email');
 
   // Step: 'form' -> 'otp'
   const [step, setStep] = useState<'form' | 'otp'>('form');
@@ -56,9 +57,9 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
   const [otpExpiresAt, setOtpExpiresAt] = useState<number>(0);
   const [countdown, setCountdown] = useState<number>(60);
   const [canResend, setCanResend] = useState<boolean>(false);
-  const [smsNotification, setSmsNotification] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Countdown timer for OTP
@@ -99,14 +100,13 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
   const getFullPhoneNumber = () => {
     const raw = phoneNumber.replace(/\D/g, '');
     if (!raw) return '';
-    // Strip leading 0 if provided (e.g. 01712... -> 1712...)
     const trimmed = raw.startsWith('0') ? raw.slice(1) : raw;
     return `+880${trimmed}`;
   };
 
-  // Dispatch OTP via Firebase Phone Auth or Email SMTP + Firebase Firestore Sync
+  // Dispatch OTP via Email SMTP or Firebase Phone Auth
   const sendVerificationCode = async (targetContact: string, code: string, name: string) => {
-    // 1. Sync OTP record to Firebase Firestore for verifiable persistence
+    // 1. Persist OTP in Firebase Firestore for server-side verification
     try {
       const cleanTargetId = targetContact.replace(/[^a-zA-Z0-9]/g, '_');
       await setDoc(
@@ -116,7 +116,7 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
           type: contactType,
           code,
           createdAt: new Date().toISOString(),
-          expiresAt: Date.now() + 5 * 60 * 1000,
+          expiresAt: Date.now() + 10 * 60 * 1000,
           verified: false,
         },
         { merge: true }
@@ -126,39 +126,34 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
     }
 
     if (contactType === 'email') {
-      // Real Gmail delivery via backend SMTP route
-      try {
-        const res = await fetch('/api/send-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: targetContact, otp: code, fullName: name }),
-        });
-        const data = await res.json();
-        console.log('Firebase Email OTP dispatched:', data);
-      } catch (e) {
-        console.warn('Backend send-otp error:', e);
+      // Direct live Gmail delivery via nodemailer SMTP
+      const res = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetContact, otp: code, fullName: name }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'ইমেইল সার্ভারে ওটিপি পাঠাতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
       }
+      showToast(`আপনার ইমেইলে (${targetContact}) ওটিপি কোড পাঠানো হয়েছে! ইনবক্স অথবা স্প্যাম (Spam) ফোল্ডার চেক করুন।`, 'success');
     } else {
       // Mobile Phone: Use Firebase Phone Authentication
       try {
         if (!window.recaptchaVerifier) {
           window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
             size: 'invisible',
-            callback: () => {
-              // recaptcha solved
-            },
+            callback: () => {},
           });
         }
         const confirmResult = await signInWithPhoneNumber(auth, targetContact, window.recaptchaVerifier);
         setConfirmationResult(confirmResult);
-        console.log('Firebase Phone Auth SMS dispatched successfully');
+        showToast(`আপনার মোবাইল নম্বরে (${targetContact}) এসএমএস এর মাধ্যমে ওটিপি কোড পাঠানো হয়েছে।`, 'success');
       } catch (fbPhoneErr: any) {
-        console.warn(
-          'Firebase Phone Auth notice (requires Phone Provider active in Firebase Console):',
-          fbPhoneErr?.code || fbPhoneErr?.message
+        console.error('Firebase Phone Auth error:', fbPhoneErr);
+        throw new Error(
+          'মোবাইল নম্বরে সরাসরি এসএমএস পাঠানোর জন্য ফায়ারবেস কনসোলে Phone Authentication ও SMS কোটা কনফিগারেশন প্রয়োজন। অনুগ্রহ করে "ইমেইল এড্রেস" নির্বাচন করে সাইন আপ করুন—যেখানে সরাসরি আপনার জিমেইলে ওটিপি পৌঁছে যাবে।'
         );
-        // Fallback banner ensures continuous usability even if SMS quota or test numbers are needed
-        setSmsNotification(`📱 SMS কোড: ${code} (${targetContact})`);
       }
     }
   };
@@ -184,7 +179,7 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
       target = `+880${trimmed}`;
     } else {
       if (!email.trim() || !email.includes('@')) {
-        setErrorMessage('সঠিক ইমেইল এড্রেস দিন');
+        setErrorMessage('সঠিক ইমেইল এড্রেস দিন (যেমন: yourname@gmail.com)');
         return;
       }
       target = email.trim().toLowerCase();
@@ -205,13 +200,13 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
       return;
     }
 
-    setIsLoading(true);
+    setIsSendingOtp(true);
     try {
       const code = generateSixDigitCode();
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
       setGeneratedOtp(code);
-      setOtpExpiresAt(Date.now() + 5 * 60 * 1000);
+      setOtpExpiresAt(Date.now() + 10 * 60 * 1000);
       setOtpInput('');
       setCountdown(60);
       setCanResend(false);
@@ -219,11 +214,10 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
       await sendVerificationCode(target, code, fullName);
 
       setStep('otp');
-      showToast('৬-সংখ্যার ওটিপি কোড পাঠানো হয়েছে', 'success');
     } catch (err: any) {
-      setErrorMessage('ওটিপি কোড পাঠাতে সমস্যা হয়েছে');
+      setErrorMessage(err.message || 'ওটিপি কোড পাঠাতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।');
     } finally {
-      setIsLoading(false);
+      setIsSendingOtp(false);
     }
   };
 
@@ -234,7 +228,7 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
 
     const cleanInput = otpInput.trim().replace(/\D/g, '');
     if (cleanInput.length !== 6) {
-      setErrorMessage('৬-সংখ্যার কোড লিখুন');
+      setErrorMessage('অনুগ্রহ করে ৬-সংখ্যার কোড লিখুন');
       return;
     }
 
@@ -245,7 +239,6 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
 
     let verified = cleanInput === generatedOtp;
 
-    // Also attempt Firebase Phone Auth confirmation if available
     if (!verified && confirmationResult) {
       try {
         await confirmationResult.confirm(cleanInput);
@@ -256,7 +249,7 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
     }
 
     if (!verified) {
-      setErrorMessage('ভুল ওটিপি কোড');
+      setErrorMessage('ভুল ওটিপি কোড! অনুগ্রহ করে সঠিক কোড দিন।');
       return;
     }
 
@@ -302,14 +295,20 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
     setGeneratedOtp(newCode);
-    setOtpExpiresAt(Date.now() + 5 * 60 * 1000);
+    setOtpExpiresAt(Date.now() + 10 * 60 * 1000);
     setOtpInput('');
     setCountdown(60);
     setCanResend(false);
     setErrorMessage(null);
 
-    await sendVerificationCode(target, newCode, fullName);
-    showToast('নতুন কোড পাঠানো হয়েছে', 'info');
+    setIsSendingOtp(true);
+    try {
+      await sendVerificationCode(target, newCode, fullName);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'কোড পুনরায় পাঠাতে সমস্যা হয়েছে।');
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
   const activeTargetDisplay =
@@ -340,7 +339,21 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-700 text-xs leading-relaxed animate-in fade-in">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-              <span>{errorMessage}</span>
+              <div className="flex-1">
+                <span>{errorMessage}</span>
+                {contactType === 'phone' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContactType('email');
+                      setErrorMessage(null);
+                    }}
+                    className="block mt-2 font-bold text-[#0B3B3C] hover:underline"
+                  >
+                    👉 ইমেইল দিয়ে ওটিপি নিন (Switch to Email OTP)
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -378,9 +391,25 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                 </div>
               </div>
 
-              {/* Segmented Switch: Phone OR Email */}
+              {/* Segmented Switch: Email OR Phone */}
               <div>
                 <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-medium">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContactType('email');
+                      setErrorMessage(null);
+                    }}
+                    className={`py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      contactType === 'email'
+                        ? 'bg-white text-[#0B3B3C] font-semibold shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>ইমেইল এড্রেস (Gmail)</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -396,27 +425,26 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                     <Smartphone className="w-3.5 h-3.5" />
                     <span>মোবাইল নম্বর</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setContactType('email');
-                      setErrorMessage(null);
-                    }}
-                    className={`py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      contactType === 'email'
-                        ? 'bg-white text-[#0B3B3C] font-semibold shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    <span>ইমেইল এড্রেস</span>
-                  </button>
                 </div>
               </div>
 
-              {/* Contact Field (Phone with Automatic Bangladesh +880 or Email) */}
-              {contactType === 'phone' ? (
+              {/* Contact Field (Email or Phone with +880) */}
+              {contactType === 'email' ? (
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    ইমেইল এড্রেস (Email Address)
+                  </label>
+                  <input
+                    id="operator-reg-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="e.g. yourname@gmail.com"
+                    className="w-full px-3 py-2 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C]/10 focus:border-[#0B3B3C] transition-all font-medium text-slate-900"
+                    required
+                  />
+                </div>
+              ) : (
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
                     মোবাইল নম্বর
@@ -432,27 +460,13 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                       value={phoneNumber}
                       onChange={(e) => {
                         const val = e.target.value.replace(/\D/g, '');
-                        // Strip leading 0 if typed
                         setPhoneNumber(val.startsWith('0') ? val.slice(1, 11) : val.slice(0, 10));
                       }}
+                      placeholder="17XXXXXXXX"
                       className="w-full px-3 py-2 text-sm bg-transparent outline-none font-medium text-slate-900"
                       required
                     />
                   </div>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    ইমেইল এড্রেস
-                  </label>
-                  <input
-                    id="operator-reg-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C]/10 focus:border-[#0B3B3C] transition-all font-medium text-slate-900"
-                    required
-                  />
                 </div>
               )}
 
@@ -509,11 +523,14 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
               <button
                 id="btn-operator-register-submit"
                 type="submit"
-                disabled={isLoading}
+                disabled={isSendingOtp}
                 className="w-full mt-1 py-2.5 px-4 bg-[#0B3B3C] hover:bg-[#135153] active:scale-[0.99] text-white font-medium text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {isSendingOtp ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>ওটিপি পাঠানো হচ্ছে...</span>
+                  </>
                 ) : (
                   <>
                     <span>ওটিপি কোড পাঠান</span>
@@ -524,12 +541,12 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
             </form>
           )}
 
-          {/* STEP 2: OTP */}
+          {/* STEP 2: OTP VERIFICATION */}
           {step === 'otp' && (
             <form onSubmit={handleVerifyOtpAndCreate} className="space-y-4">
-              <div className="p-3 bg-teal-50/60 border border-teal-200/80 rounded-xl text-center space-y-0.5">
+              <div className="p-3 bg-teal-50/60 border border-teal-200/80 rounded-xl text-center space-y-1">
                 <p className="text-xs text-slate-600">
-                  নিচের ঠিকানায় ৬-সংখ্যার কোড পাঠানো হয়েছে:
+                  নিচের ঠিকানায় ৬-সংখ্যার সিকিউরিটি কোড পাঠানো হয়েছে:
                 </p>
                 <div className="inline-flex items-center gap-1.5 font-bold text-[#0B3B3C] text-sm">
                   {contactType === 'phone' ? (
@@ -541,10 +558,13 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                 </div>
               </div>
 
-              {smsNotification && (
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="font-semibold">{smsNotification}</span>
+              {/* Helpful notice for Email Spam folder */}
+              {contactType === 'email' && (
+                <div className="p-2.5 bg-amber-50/80 border border-amber-200/70 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                  <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    ইনবক্সে ইমেইল দেখতে না পেলে অনুগ্রহ করে আপনার Gmail এর <strong>Spam / Junk</strong> অথবা <strong>Promotions</strong> ফোল্ডার চেক করুন।
+                  </span>
                 </div>
               )}
 
@@ -553,6 +573,7 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                   ৬-সংখ্যার কোড লিখুন
                 </label>
                 <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="input-operator-register-otp"
                     type="text"
@@ -564,7 +585,8 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                     required
                     value={otpInput}
                     onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full px-4 py-2.5 text-center text-xl font-mono font-bold tracking-[0.35em] bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C]/10 focus:border-[#0B3B3C] transition-all"
+                    placeholder="• • • • • •"
+                    className="w-full pl-10 pr-4 py-2.5 text-center text-xl font-mono font-bold tracking-[0.35em] bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C]/10 focus:border-[#0B3B3C] transition-all"
                   />
                 </div>
               </div>
@@ -591,7 +613,6 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                   onClick={() => {
                     setStep('form');
                     setErrorMessage(null);
-                    setSmsNotification(null);
                   }}
                   className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 font-medium cursor-pointer"
                 >
@@ -603,10 +624,11 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                   <button
                     type="button"
                     onClick={handleResendOtp}
+                    disabled={isSendingOtp}
                     className="flex items-center gap-1.5 text-[#0B3B3C] hover:underline font-bold cursor-pointer"
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Resend OTP</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSendingOtp ? 'animate-spin' : ''}`} />
+                    <span>Resend OTP (পুনরায় পাঠান)</span>
                   </button>
                 ) : (
                   <span className="text-slate-400 font-mono">

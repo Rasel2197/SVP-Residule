@@ -40,39 +40,45 @@ async function startServer() {
           },
         });
 
-        console.log(`[RESIDULE SVP] Attempting to send email via Gmail to ${email} using ${smtpUser}`);
+        console.log(`[SVP RESCHEDULE] Attempting to send email via Gmail to ${email} using ${smtpUser}`);
 
         const info = await transporter.sendMail({
-          from: `"RESIDULE SVP" <${smtpUser}>`,
+          from: `"SVP Reschedule Portal" <${smtpUser}>`,
           to: email,
-          subject: `Your RESIDULE SVP Login Verification Code: ${otp}`,
+          subject: `[SVP Reschedule] আপনার ওটিপি ভেরিফিকেশন কোড: ${otp}`,
+          text: `আপনার SVP Reschedule Portal একাউন্ট ভেরিফিকেশন কোড হলো: ${otp}। এই কোডটির মেয়াদ ১০ মিনিট। অনুগ্রহ করে এটি কারও সাথে শেয়ার করবেন না।`,
+          headers: {
+            'X-Priority': '1 (Highest)',
+            'X-MSMail-Priority': 'High',
+            'Importance': 'High',
+          },
           html: `
-            <div style="font-family: Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
-              <div style="text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #0B3B3C;">
-                <h2 style="color: #0B3B3C; margin: 0; font-size: 22px;">RESIDULE SVP</h2>
-                <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Official Candidate Portal - SVPI Examination System</p>
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+              <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #0B3B3C;">
+                <h2 style="color: #0B3B3C; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.5px;">SVP RESCHEDULE PORTAL</h2>
+                <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Skill Verification Program (SVP তাকামুল)</p>
               </div>
-              <p style="color: #1e293b; font-size: 15px; margin-bottom: 16px;">Dear <strong>${fullName || 'Candidate'}</strong>,</p>
-              <p style="color: #334155; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
-                You have requested a secure One-Time Password (OTP) to log in to your <strong>RESIDULE SVP</strong> account. Please use the following 6-digit verification code:
+              <p style="color: #1e293b; font-size: 15px; margin-bottom: 14px;">প্রিয় <strong>${fullName || 'ব্যবহারকারী'}</strong>,</p>
+              <p style="color: #334155; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+                SVP Reschedule পোর্টালে আপনার একাউন্ট সিকিউরিটি ভেরিফিকেশনের জন্য নিচের ৬-সংখ্যার গোপন ওটিপি (OTP) কোডটি ব্যবহার করুন:
               </p>
-              <div style="background-color: #f0fdfa; border: 2px dashed #0d9488; border-radius: 12px; padding: 18px; text-align: center; margin-bottom: 24px;">
-                <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0f766e;">${otp}</span>
+              <div style="background-color: #f0fdfa; border: 2px dashed #0d9488; border-radius: 12px; padding: 18px; text-align: center; margin-bottom: 20px;">
+                <span style="font-family: monospace; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #0f766e;">${otp}</span>
               </div>
-              <p style="color: #64748b; font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
-                ⏱️ This OTP code is valid for <strong>10 minutes</strong>. Do not share this code with anyone.
+              <p style="color: #64748b; font-size: 12px; line-height: 1.5; margin-bottom: 10px;">
+                ⏱️ এই ওটিপি কোডটির মেয়াদ <strong>১০ মিনিট</strong>। নিরাপত্তার স্বার্থে কোডটি কাউকে জানাবেন না।
               </p>
-              <p style="color: #64748b; font-size: 12px; line-height: 1.5; margin-bottom: 24px;">
-                If you did not initiate this login request, please disregard this email.
+              <p style="color: #94a3b8; font-size: 11px; line-height: 1.5; margin-bottom: 20px;">
+                (যদি আপনি এই রিকোয়েস্ট না করে থাকেন, তবে এই ইমেইলটি উপেক্ষা করুন।)
               </p>
-              <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; color: #94a3b8; font-size: 11px;">
-                Official SVPI Portal: <a href="https://share.google/dqJYdIEwULNHFfTSr" style="color: #0d9488; text-decoration: none;">https://share.google/dqJYdIEwULNHFfTSr</a><br/>
-                &copy; ${new Date().getFullYear()} RESIDULE SVP. All rights reserved.
+              <div style="border-top: 1px solid #e2e8f0; padding-top: 14px; text-align: center; color: #94a3b8; font-size: 11px;">
+                &copy; ${new Date().getFullYear()} SVP Reschedule Portal. All rights reserved.
               </div>
             </div>
           `,
         });
         emailSent = true;
+        console.log(`[SVP RESCHEDULE] Email successfully sent to ${email}. MessageId: ${info.messageId}`);
       } else {
         console.log(`[RESIDULE SVP] Live SMTP not configured. OTP generated for ${email}. To send real emails, set SMTP_USER and SMTP_PASS in Settings/Secrets.`);
       }
