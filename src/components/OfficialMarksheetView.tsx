@@ -75,48 +75,51 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
     candidate?.passportNumber || (marksheet as any)?.passportNumber || 'A09012936';
 
   /**
-   * Generates and downloads a clean, standalone PDF of ONLY this marksheet
+   * Generates and downloads a clean, standalone PDF of ONLY this marksheet using html2pdf.js
    */
   const handleDownloadPDF = async () => {
     const element = document.getElementById('official-takamul-marksheet-card');
-    if (!element) return;
+    if (!element) {
+      showToast('মার্কশিট এলিমেন্ট পাওয়া যায়নি।', 'error');
+      return;
+    }
 
     setIsDownloading(true);
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const jsPDF = (await import('jspdf')).default;
-
-      // Render marksheet card with scale 2 for crisp vector-like print resolution
-      const canvas = await html2canvas(element, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-
-      const pdfWidth = 210;
-      const margin = 12;
-      const renderWidth = pdfWidth - margin * 2;
-      const renderHeight = (canvas.height * renderWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', margin, 15, renderWidth, renderHeight);
+      // @ts-ignore
+      const html2pdfModule = await import('html2pdf.js');
+      const html2pdf = html2pdfModule.default || html2pdfModule;
 
       const candidateSlug = (marksheet.candidateName || 'Candidate')
         .replace(/\s+/g, '_')
         .replace(/[^a-zA-Z0-9_]/g, '');
       const fileName = `Takamul_SVP_Marksheet_${candidateSlug}_${passportNumber}.pdf`;
 
-      pdf.save(fileName);
+      const opt: any = {
+        margin: [8, 8, 8, 8],
+        filename: fileName,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2.5,
+          useCORS: true,
+          letterRendering: true,
+          backgroundColor: '#ffffff',
+          scrollY: 0,
+          scrollX: 0,
+          logging: false,
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait',
+        },
+      };
+
+      // html2pdf generates PDF strictly from the #official-takamul-marksheet-card element
+      await html2pdf().set(opt).from(element).save();
       showToast('অফিসিয়াল মার্কশিট PDF সফলভাবে ডাউনলোড হয়েছে!', 'success');
     } catch (err) {
-      console.error('Marksheet PDF generation error:', err);
+      console.error('html2pdf generation error:', err);
       showToast('পিডিএফ তৈরিতে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     } finally {
       setIsDownloading(false);
@@ -205,7 +208,7 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              id="btn-download-official-marksheet-pdf"
+              id="btn-download-as-pdf"
               type="button"
               onClick={handleDownloadPDF}
               disabled={isDownloading}
@@ -216,7 +219,7 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
               ) : (
                 <Download className="w-3.5 h-3.5 text-teal-100" />
               )}
-              <span>{isDownloading ? 'PDF তৈরি হচ্ছে...' : 'ডাউনলোড PDF (Download PDF)'}</span>
+              <span>{isDownloading ? 'Generating PDF...' : 'Download as PDF'}</span>
             </button>
 
             <button
@@ -430,7 +433,66 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
             তৈরি: {generatedTimestamp}
           </p>
         </div>
+
+        {/* Dedicated In-Card Download Button Bar (ignored by html2pdf/html2canvas and hidden in print) */}
+        <div
+          data-html2canvas-ignore="true"
+          className="no-print px-6 sm:px-8 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 text-xs"
+        >
+          <span className="text-slate-500 font-medium">
+            অফিসিয়াল সার্টিফিকেট ডাউনলোড করতে পাশের বোতামে চাপুন:
+          </span>
+          <button
+            id="btn-incard-download-as-pdf"
+            type="button"
+            onClick={handleDownloadPDF}
+            disabled={isDownloading}
+            className="px-4 py-1.5 bg-[#0e8a75] hover:bg-teal-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5 text-teal-100" />
+            <span>Download as PDF</span>
+          </button>
+        </div>
       </div>
     </div>
   );
 };
+
+/**
+ * Standalone helper to download any marksheet card element as a clean PDF using html2pdf.js
+ */
+export async function downloadMarksheetElementAsPDF(
+  elementId: string = 'official-takamul-marksheet-card',
+  fileName: string = 'Takamul_SVP_Marksheet.pdf'
+): Promise<void> {
+  const element = document.getElementById(elementId);
+  if (!element) {
+    throw new Error(`Element #${elementId} not found in DOM`);
+  }
+
+  // @ts-ignore
+  const html2pdfModule = await import('html2pdf.js');
+  const html2pdf = html2pdfModule.default || html2pdfModule;
+
+  const opt: any = {
+    margin: [8, 8, 8, 8],
+    filename: fileName,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: {
+      scale: 2.5,
+      useCORS: true,
+      letterRendering: true,
+      backgroundColor: '#ffffff',
+      scrollY: 0,
+      scrollX: 0,
+      logging: false,
+    },
+    jsPDF: {
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+    },
+  };
+
+  await html2pdf().set(opt).from(element).save();
+}
