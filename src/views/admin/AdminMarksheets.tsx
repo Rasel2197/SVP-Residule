@@ -24,6 +24,7 @@ import { useToast } from '../../components/Toast';
 import { useAuth } from '../../context/AuthContext';
 import { generateMarksheetPDF } from '../../utils/pdfGenerator';
 import { formatDate } from '../../utils/rules';
+import { OfficialMarksheetView } from '../../components/OfficialMarksheetView';
 
 interface AdminMarksheetsProps {
   onNavigate: (view: string) => void;
@@ -395,110 +396,13 @@ export const AdminMarksheets: React.FC<AdminMarksheetsProps> = ({
 
       {/* Preview Marksheet Modal */}
       {previewMarksheet && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-xl p-6 relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setPreviewMarksheet(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <h3 className="text-lg font-bold text-slate-900 mb-1">Official Marksheet Record</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Ref: <strong className="font-mono">{previewMarksheet.referenceId}</strong> • Issued: {formatDate(previewMarksheet.issueDate)}
-            </p>
-
-            <div className="space-y-4 text-xs">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-slate-500 block">Candidate:</span>
-                  <strong className="text-slate-900">{previewMarksheet.candidateName}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Candidate ID:</span>
-                  <strong className="text-slate-900 font-mono">{previewMarksheet.candidateId}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Trade:</span>
-                  <strong className="text-slate-900">{previewMarksheet.trade}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Exam Date:</span>
-                  <strong className="text-slate-900">{formatDate(previewMarksheet.examDate)}</strong>
-                </div>
-              </div>
-
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-100 font-bold text-slate-700">
-                    <tr>
-                      <th className="p-2.5">Paper / Component</th>
-                      <th className="p-2.5 text-center">Score</th>
-                      <th className="p-2.5 text-center">Pass Threshold</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <td className="p-2.5">Section 1: Theoretical Assessment</td>
-                      <td className="p-2.5 text-center font-bold">{previewMarksheet.theoryMarks} / 100</td>
-                      <td className="p-2.5 text-center text-slate-500">50</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2.5">Section 2: Practical Workshop Execution</td>
-                      <td className="p-2.5 text-center font-bold">{previewMarksheet.practicalMarks} / 100</td>
-                      <td className="p-2.5 text-center text-slate-500">50</td>
-                    </tr>
-                    <tr className="bg-slate-50 font-bold">
-                      <td className="p-2.5">Cumulative Total Score</td>
-                      <td className="p-2.5 text-center text-blue-700 font-extrabold">
-                        {previewMarksheet.totalMarks} / 200
-                      </td>
-                      <td className="p-2.5 text-center text-slate-500">100</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div
-                className={`p-3 rounded-xl border flex items-center justify-between ${
-                  previewMarksheet.resultStatus === 'PASS'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : 'bg-rose-50 border-rose-200 text-rose-900'
-                }`}
-              >
-                <span className="font-bold">Result Classification:</span>
-                <span className="px-3 py-1 rounded-full text-xs font-bold text-white bg-slate-900 uppercase">
-                  {previewMarksheet.resultStatus}
-                </span>
-              </div>
-
-              {previewMarksheet.remarks && (
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-700">
-                  <span className="font-bold block text-slate-900 mb-0.5">Remarks:</span>
-                  {previewMarksheet.remarks}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 pt-3 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Certified by: {previewMarksheet.issuedBy}</span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPreviewMarksheet(null)}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => handleDownloadPDF(previewMarksheet)}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-1.5 shadow-xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Download PDF
-                </button>
-              </div>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-3xl my-auto animate-in fade-in zoom-in-95">
+            <OfficialMarksheetView
+              marksheet={previewMarksheet}
+              showActions={true}
+              onClose={() => setPreviewMarksheet(null)}
+            />
           </div>
         </div>
       )}

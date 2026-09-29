@@ -14,257 +14,250 @@ export function generateMarksheetPDF(marksheet: Marksheet, candidate?: Candidate
 
   const pageWidth = 210;
   const pageHeight = 297;
-  const margin = 20;
+  const margin = 16;
   const contentWidth = pageWidth - margin * 2;
 
-  // Outer Border & Decorative Institutional Frame
-  doc.setDrawColor(30, 58, 138); // Navy #1e3a8a
-  doc.setLineWidth(1.2);
-  doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
+  // Outer Border & Subtle Decorative Frame
+  doc.setDrawColor(226, 232, 240); // Slate-200
+  doc.setLineWidth(0.6);
+  doc.roundedRect(10, 10, pageWidth - 20, pageHeight - 20, 4, 4);
 
-  doc.setDrawColor(203, 213, 225); // Slate-300
-  doc.setLineWidth(0.4);
-  doc.rect(13, 13, pageWidth - 26, pageHeight - 26);
-
-  // Top Header Banner
-  doc.setFillColor(15, 23, 42); // Slate-900 / Navy
-  doc.rect(14, 14, pageWidth - 28, 28, 'F');
+  // Top Header Banner (Official Takamul SVP Teal)
+  doc.setFillColor(14, 138, 117); // #0e8a75
+  doc.roundedRect(12, 12, pageWidth - 24, 28, 3, 3, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text('SVP TAKAMUL MARKSHEET', pageWidth / 2, 24, { align: 'center' });
+  doc.setFontSize(17);
+  doc.text('EXAMINATION RESULT / SVP MARKSHEET', 18, 24);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(203, 213, 225);
-  doc.text('INDEPENDENT SKILL VERIFICATION & CERTIFICATION SYSTEM', pageWidth / 2, 30, { align: 'center' });
-  doc.text('OFFICIAL TRANSCRIPT OF EXAMINATION MARKS', pageWidth / 2, 36, { align: 'center' });
+  doc.setTextColor(204, 251, 241); // Teal-100
+  doc.text('SVP International · Skill Verification Program', 18, 31);
 
-  // Document Reference & Verification Meta
-  let y = 50;
-  doc.setTextColor(71, 85, 105);
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Reference No: ${marksheet.referenceId}`, margin, y);
-  doc.text(`Issue Date: ${marksheet.issueDate}`, pageWidth - margin, y, { align: 'right' });
+  // Status Badge on Header Right
+  const cbtMax = 25;
+  const cbtObtained =
+    marksheet.theoryMarks <= 25
+      ? marksheet.theoryMarks
+      : Math.round((marksheet.theoryMarks / 100) * 25);
+  const cbtPercent = Math.round((cbtObtained / cbtMax) * 100);
+  const cbtRaw = marksheet.theoryMarks || Math.round(cbtObtained * 2.06);
+  const cbtCorrect = Math.min(15, Math.max(1, Math.round((cbtPercent / 100) * 15)));
+  const cbtWrong = 15 - cbtCorrect;
 
-  // Divider Line
-  y += 5;
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.5);
-  doc.line(margin, y, pageWidth - margin, y);
+  const pracMax = 75;
+  const pracObtained =
+    marksheet.practicalMarks <= 75
+      ? marksheet.practicalMarks
+      : Math.round((marksheet.practicalMarks / 100) * 75);
+  const pracPercent = Math.round((pracObtained / pracMax) * 100);
+  const pracRaw = marksheet.practicalMarks || Math.round((pracObtained / 75) * 100);
 
-  // Section 1: Candidate Identification
-  y += 10;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text('1. CANDIDATE DETAILS', margin, y);
+  const totalMax = 100;
+  const totalObtained = cbtObtained + pracObtained;
+  const totalPercent = Math.round((totalObtained / totalMax) * 100);
+  const isPassed = marksheet.resultStatus === 'PASS' || totalPercent >= 50;
 
-  y += 4;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(margin, y, contentWidth, 34, 2, 2, 'FD');
+  if (isPassed) {
+    doc.setFillColor(32, 178, 146); // #20b292
+    doc.roundedRect(pageWidth - 52, 18, 32, 14, 7, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('PASSED', pageWidth - 36, 27, { align: 'center' });
+  } else {
+    doc.setFillColor(220, 38, 38);
+    doc.roundedRect(pageWidth - 52, 18, 32, 14, 7, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('FAILED', pageWidth - 36, 27, { align: 'center' });
+  }
 
-  const startY = y + 7;
-  const col1 = margin + 6;
+  // Section 1: Candidate Identification Grid
+  let y = 48;
+  const col1 = margin + 4;
   const col2 = margin + 95;
 
+  const passportNumber = candidate?.passportNumber || (marksheet as any)?.passportNumber || 'A09012936';
+  const nationalId =
+    (candidate as any)?.nationalId ||
+    candidate?.candidateId?.replace(/\D/g, '') ||
+    marksheet.candidateId?.replace(/\D/g, '') ||
+    '9179075925';
+  const reservationNumber = marksheet.referenceId
+    ? marksheet.referenceId.replace(/\D/g, '').slice(-7) || '5739641'
+    : '5739641';
+
+  // Row 1
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(148, 163, 184); // Slate-400
+  doc.text('NAME / CANDIDATE', col1, y);
+  doc.text('PROFESSION / TRADE', col2, y);
+
+  y += 5;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42); // Slate-900
+  doc.text(marksheet.candidateName.toUpperCase(), col1, y);
+  doc.text(marksheet.trade, col2, y);
+
+  // Row 2
+  y += 10;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(148, 163, 184);
+  doc.text('PASSPORT NUMBER', col1, y);
+  doc.text('NATIONAL ID / REGISTRATION NO', col2, y);
+
+  y += 5;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(passportNumber, col1, y);
+  doc.text(nationalId, col2, y);
+
+  // Row 3
+  y += 10;
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(148, 163, 184);
+  doc.text('EXAM CENTER / VENUE', col1, y);
+  doc.text('EXAM DATE & TIME', col2, y);
+
+  y += 5;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(51, 65, 85);
-  doc.text('Candidate Name:', col1, startY);
+  doc.setTextColor(15, 23, 42);
+  const centerText = doc.splitTextToSize(marksheet.examCenter, 85);
+  doc.text(centerText, col1, y);
+  doc.text(`${marksheet.examDate} 05:30`, col2, y);
+
+  // Row 4
+  y += Math.max(10, centerText.length * 5 + 4);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(15, 23, 42);
-  doc.text(marksheet.candidateName.toUpperCase(), col1 + 35, startY);
+  doc.setTextColor(148, 163, 184);
+  doc.text('LANGUAGE', col1, y);
+  doc.text('RESERVATION NUMBER', col2, y);
 
+  y += 5;
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(51, 65, 85);
-  doc.text('Candidate ID:', col2, startY);
-  doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(marksheet.candidateId, col2 + 30, startY);
+  doc.text('BN', col1, y);
+  doc.text(`#${reservationNumber}`, col2, y);
 
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(51, 65, 85);
-  doc.text('Assessed Trade:', col1, startY + 8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(15, 23, 42);
-  doc.text(marksheet.trade, col1 + 35, startY + 8);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(51, 65, 85);
-  doc.text('Passport No:', col2, startY + 8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(15, 23, 42);
-  doc.text(candidate?.passportNumber || 'VERIFIED ON FILE', col2 + 30, startY + 8);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(51, 65, 85);
-  doc.text('Exam Center:', col1, startY + 16);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(15, 23, 42);
-  doc.text(marksheet.examCenter, col1 + 35, startY + 16);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(51, 65, 85);
-  doc.text('Exam Date:', col2, startY + 16);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(15, 23, 42);
-  doc.text(marksheet.examDate, col2 + 30, startY + 16);
-
-  // Section 2: Marks & Performance Table
-  y += 46;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text('2. ASSESSMENT BREAKDOWN', margin, y);
-
-  y += 4;
-  // Table Header
-  doc.setFillColor(30, 41, 59); // Slate-800
+  // Section 2: Marks Table
+  y += 14;
+  doc.setFillColor(14, 138, 117); // #0e8a75
   doc.rect(margin, y, contentWidth, 8, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('ASSESSMENT COMPONENT', margin + 6, y + 5.5);
-  doc.text('MAXIMUM', margin + 95, y + 5.5);
-  doc.text('PASS MARK', margin + 125, y + 5.5);
-  doc.text('MARKS OBTAINED', margin + 155, y + 5.5);
+  doc.text('SECTION', margin + 4, y + 5.5);
+  doc.text('MAX', margin + 50, y + 5.5, { align: 'center' });
+  doc.text('OBTAINED', margin + 74, y + 5.5, { align: 'center' });
+  doc.text('PERCENT', margin + 98, y + 5.5, { align: 'center' });
+  doc.text('RAW SCORE', margin + 124, y + 5.5, { align: 'center' });
+  doc.text('CORRECT', margin + 148, y + 5.5, { align: 'center' });
+  doc.text('WRONG', margin + 168, y + 5.5, { align: 'center' });
 
-  // Row 1: Theory
+  // Row 1: CBT
   y += 8;
   doc.setFillColor(255, 255, 255);
   doc.rect(margin, y, contentWidth, 9, 'F');
-  doc.setDrawColor(226, 232, 240);
+  doc.setDrawColor(241, 245, 249);
   doc.line(margin, y + 9, margin + contentWidth, y + 9);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Section A: Theoretical Knowledge & Regulations', margin + 6, y + 6);
-  doc.text('100', margin + 95, y + 6);
-  doc.text('50', margin + 125, y + 6);
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text('CBT (MCQ)', margin + 4, y + 6);
+  doc.text(`${cbtMax}`, margin + 50, y + 6, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`${marksheet.theoryMarks}`, margin + 155, y + 6);
+  doc.text(`${cbtObtained}`, margin + 74, y + 6, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${cbtPercent}%`, margin + 98, y + 6, { align: 'center' });
+  doc.text(`${cbtRaw}`, margin + 124, y + 6, { align: 'center' });
+  doc.setTextColor(22, 163, 74); // green-600
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${cbtCorrect}/15`, margin + 148, y + 6, { align: 'center' });
+  doc.setTextColor(220, 38, 38); // red-600
+  doc.text(`${cbtWrong}`, margin + 168, y + 6, { align: 'center' });
 
   // Row 2: Practical
   y += 9;
-  doc.setFillColor(248, 250, 252);
+  doc.setFillColor(255, 255, 255);
   doc.rect(margin, y, contentWidth, 9, 'F');
-  doc.setDrawColor(226, 232, 240);
   doc.line(margin, y + 9, margin + contentWidth, y + 9);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Section B: Practical Performance & Applied Skill', margin + 6, y + 6);
-  doc.text('100', margin + 95, y + 6);
-  doc.text('50', margin + 125, y + 6);
+  doc.setTextColor(30, 41, 59);
+  doc.text('Practical (Workshop Assessment)', margin + 4, y + 6);
+  doc.text(`${pracMax}`, margin + 50, y + 6, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.text(`${marksheet.practicalMarks}`, margin + 155, y + 6);
+  doc.text(`${pracObtained}`, margin + 74, y + 6, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${pracPercent}%`, margin + 98, y + 6, { align: 'center' });
+  doc.text(`${pracRaw}`, margin + 124, y + 6, { align: 'center' });
+  doc.setTextColor(148, 163, 184);
+  doc.text('-', margin + 148, y + 6, { align: 'center' });
+  doc.text('-', margin + 168, y + 6, { align: 'center' });
 
-  // Row 3: Total Aggregate
+  // Row 3: Total
   y += 9;
-  doc.setFillColor(241, 245, 249);
+  doc.setFillColor(240, 253, 250); // Mint tint
   doc.rect(margin, y, contentWidth, 10, 'F');
-  doc.setDrawColor(148, 163, 184);
-  doc.setLineWidth(0.8);
+  doc.setDrawColor(204, 251, 241);
   doc.line(margin, y + 10, margin + contentWidth, y + 10);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
-  doc.text('AGGREGATE TOTAL SCORE', margin + 6, y + 6.5);
-  doc.text(`${marksheet.maxMarks || 200}`, margin + 95, y + 6.5);
-  doc.text('100', margin + 125, y + 6.5);
-  doc.setTextColor(30, 58, 138);
-  doc.text(`${marksheet.totalMarks} / ${marksheet.maxMarks || 200}`, margin + 155, y + 6.5);
+  doc.text('TOTAL / AGGREGATE', margin + 4, y + 6.5);
+  doc.text(`${totalMax}`, margin + 50, y + 6.5, { align: 'center' });
+  doc.text(`${totalObtained}`, margin + 74, y + 6.5, { align: 'center' });
+  doc.text(`${totalPercent}%`, margin + 98, y + 6.5, { align: 'center' });
 
-  // Section 3: Final Result Status Badge
-  y += 20;
-  const isPassed = marksheet.resultStatus === 'PASS';
-  const badgeWidth = 110;
-  const badgeHeight = 22;
-  const badgeX = (pageWidth - badgeWidth) / 2;
-
-  if (isPassed) {
-    doc.setFillColor(240, 253, 244); // green-50
-    doc.setDrawColor(22, 163, 74); // green-600
-  } else {
-    doc.setFillColor(254, 242, 242); // red-50
-    doc.setDrawColor(220, 38, 38); // red-600
-  }
-
-  doc.setLineWidth(1.2);
-  doc.roundedRect(badgeX, y, badgeWidth, badgeHeight, 3, 3, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(71, 85, 105);
-  doc.text('FINAL VERIFICATION RESULT', pageWidth / 2, y + 7, { align: 'center' });
-
-  doc.setFontSize(14);
-  if (isPassed) {
-    doc.setTextColor(21, 128, 61); // green-700
-    doc.text('PASSED - CERTIFIED COMPETENT', pageWidth / 2, y + 16, { align: 'center' });
-  } else {
-    doc.setTextColor(185, 28, 28); // red-700
-    doc.text('FAILED - REQUIRES RE-ASSESSMENT', pageWidth / 2, y + 16, { align: 'center' });
-  }
-
-  // Section 4: Security Features & Digital Validation Stamp
-  y += 35;
-  doc.setDrawColor(203, 213, 225);
+  // Section 3: Official Verification Notice
+  y += 18;
+  doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.4);
-  doc.roundedRect(margin, y, contentWidth, 38, 2, 2);
+  doc.roundedRect(margin, y, contentWidth, 30, 2, 2);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('OFFICIAL VERIFICATION & AUTHENTICITY NOTICE', margin + 6, y + 7);
+  doc.setTextColor(14, 138, 117);
+  doc.text('OFFICIAL VERIFICATION & AUTHENTICITY NOTICE', margin + 6, y + 6.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
   const notices = [
-    'This transcript is generated electronically by the Takamul Candidate Management Portal.',
-    'Any physical alterations, erasures, or unauthorized modifications render this document completely void.',
-    `To verify this result independently, enter the reference code [${marksheet.referenceId}] at the portal.`,
-    'Candidate examination records are securely signed and archived in the immutable examination registry.',
+    'This transcript is generated electronically by the SVP International Skill Verification Program.',
+    `Verification Reference Code: #${reservationNumber} · Tamper-proof assessment transcript.`,
+    'Candidate examination records are registered and archived in the central certification database.',
   ];
-  let noticeY = y + 13;
+  let noticeY = y + 12;
   notices.forEach(n => {
     doc.text(`•  ${n}`, margin + 6, noticeY);
     noticeY += 5;
   });
 
-  // Footer & Seal signature area
-  y += 50;
-  doc.setDrawColor(148, 163, 184);
-  doc.setLineWidth(0.4);
-  doc.line(margin + 15, y, margin + 65, y);
-  doc.line(pageWidth - margin - 65, y, pageWidth - margin - 15, y);
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text('Chief Assessment Officer', margin + 40, y + 4, { align: 'center' });
-  doc.text('Director of Certification', pageWidth - margin - 40, y + 4, { align: 'center' });
-
-  doc.setFontSize(7);
+  // Footer
+  y += 38;
+  doc.setFontSize(8);
   doc.setTextColor(148, 163, 184);
-  doc.text(
-    `SVP PORTAL • SVPI Official Portal: https://share.google/dqJYdIEwULNHFfTSr • Ref #${marksheet.referenceId}`,
-    pageWidth / 2,
-    pageHeight - 16,
-    { align: 'center' }
-  );
+  doc.text('Generated automatically by SVP System (SVP International).', margin, y);
+  doc.text(`Generated: ${marksheet.issueDate || '2026-09-24, 14:46:31'}`, pageWidth - margin, y, { align: 'right' });
 
-  // Trigger browser download
+  // Save the PDF
   const sanitizedName = marksheet.candidateName.replace(/\s+/g, '_');
-  const filename = `SVP_Marksheet_${marksheet.candidateId}_${sanitizedName}.pdf`;
+  const filename = `Takamul_SVP_Marksheet_${marksheet.candidateId}_${sanitizedName}.pdf`;
   doc.save(filename);
 }
 

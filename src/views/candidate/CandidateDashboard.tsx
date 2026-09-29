@@ -20,6 +20,7 @@ import {
   X,
   Printer,
   ExternalLink,
+  Eye,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -32,6 +33,7 @@ import { Marksheet, ExamCenter, ExamDate, Candidate } from '../../types';
 import { generateMarksheetPDF, generateRescheduleSlipPDF } from '../../utils/pdfGenerator';
 import { useToast } from '../../components/Toast';
 import { BANGLADESH_TAKAMUL_TTCS, BangladeshTTC } from '../../data/bangladeshTTCs';
+import { OfficialMarksheetView } from '../../components/OfficialMarksheetView';
 
 const POPULAR_TRADES = [
   { id: 'Electrical Installation', name: 'Electrical Installation', bangla: 'ইলেকট্রিক্যাল ইন্সটলেশন (Electrical)', category: 'Construction & MEP' },
@@ -53,6 +55,7 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
   // Marksheet data state
   const [allMarksheets, setAllMarksheets] = useState<Marksheet[]>([]);
   const [isLoadingMarksheets, setIsLoadingMarksheets] = useState<boolean>(false);
+  const [viewingMarksheet, setViewingMarksheet] = useState<Marksheet | null>(null);
 
   // Reschedule state
   const [allCenters, setAllCenters] = useState<ExamCenter[]>([]);
@@ -507,15 +510,27 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
                               {isPass ? 'PASSED (উত্তীর্ণ)' : 'FAILED (পুনঃপরীক্ষা)'}
                             </span>
 
-                            <button
-                              id={`btn-download-ms-${index}`}
-                              type="button"
-                              onClick={() => handleDownloadMarksheet(ms)}
-                              className="w-full sm:w-auto px-4 py-2.5 bg-[#0B3B3C] hover:bg-[#114B4D] text-white text-xs font-bold rounded-xl shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>পিডিএফ ডাউনলোড / Download PDF</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                id={`btn-view-ms-${index}`}
+                                type="button"
+                                onClick={() => setViewingMarksheet(ms)}
+                                className="w-full sm:w-auto px-4 py-2 bg-[#0e8a75] hover:bg-teal-800 text-white text-xs font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>অফিসিয়াল মার্কশিট দেখুন</span>
+                              </button>
+
+                              <button
+                                id={`btn-download-ms-${index}`}
+                                type="button"
+                                onClick={() => handleDownloadMarksheet(ms)}
+                                className="w-full sm:w-auto px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>PDF</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
 
@@ -899,6 +914,19 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Viewing Marksheet Official Modal */}
+      {viewingMarksheet && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-3xl my-auto animate-in fade-in zoom-in-95">
+            <OfficialMarksheetView
+              marksheet={viewingMarksheet}
+              candidate={candidate}
+              showActions={true}
+              onClose={() => setViewingMarksheet(null)}
+            />
           </div>
         </div>
       )}

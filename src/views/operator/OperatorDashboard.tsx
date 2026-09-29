@@ -50,6 +50,7 @@ import { Candidate, ExamDate, ExamCenter, Marksheet, CreditTransaction } from '.
 import { formatDate } from '../../utils/rules';
 import { verifyCredentialsStrict } from '../../services/credentialService';
 import { BANGLADESH_TAKAMUL_TTCS, BANGLADESH_DIVISIONS } from '../../data/bangladeshTTCs';
+import { OfficialMarksheetView } from '../../components/OfficialMarksheetView';
 
 const DIVISION_BANGLA: Record<string, string> = {
   Dhaka: 'ঢাকা',
@@ -1883,110 +1884,14 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                   </div>
                 ) : null}
 
-                {/* Unlocked Marksheet Preview */}
+                {/* Unlocked Marksheet Official View */}
                 {unlockedMarksheet && unlockedMarksheet.candidateId === authCandidate.candidateId && (
-                  <div className="bg-white rounded-2xl border-2 border-teal-600 shadow-xl p-6 sm:p-8 space-y-6 animate-in zoom-in-95">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-800">
-                          <ShieldCheck className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-black text-slate-900 uppercase">
-                            অফিসিয়াল মার্কশিট ও ফলাফল ভাউচার
-                          </h3>
-                          <p className="text-xs text-slate-500 font-mono">
-                            Verification Ref: {unlockedMarksheet.referenceId}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => window.print()}
-                          className="px-4 py-2 bg-[#0B3B3C] hover:bg-teal-900 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md cursor-pointer transition-colors"
-                        >
-                          <Printer className="w-4 h-4" />
-                          <span>প্রিন্ট / ডাউনলোড (Print Marksheet)</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Candidate & Exam Metadata */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">প্রার্থীর নাম</p>
-                        <p className="font-bold text-slate-900">{unlockedMarksheet.candidateName}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">ক্যান্ডিডেট আইডি</p>
-                        <p className="font-mono font-bold text-slate-900">{unlockedMarksheet.candidateId}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">ট্রেড / প্রফেশন</p>
-                        <p className="font-bold text-slate-900">{unlockedMarksheet.trade}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">পরীক্ষার তারিখ</p>
-                        <p className="font-bold text-slate-900">{unlockedMarksheet.examDate}</p>
-                      </div>
-                    </div>
-
-                    {/* Score Breakdown Table */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead className="bg-[#0B3B3C] text-white font-bold uppercase">
-                          <tr>
-                            <th className="p-3">অ্যাসেসমেন্ট বিষয় (Assessment Component)</th>
-                            <th className="p-3 text-center">সর্বোচ্চ নম্বর</th>
-                            <th className="p-3 text-center">প্রাপ্ত নম্বর</th>
-                            <th className="p-3 text-center">শতাংশ (%)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 border-b border-slate-200 font-medium">
-                          <tr>
-                            <td className="p-3 font-semibold">থিওরি টেস্ট (Theory & Safety Test)</td>
-                            <td className="p-3 text-center">100</td>
-                            <td className="p-3 text-center font-bold text-slate-900">{unlockedMarksheet.theoryMarks}</td>
-                            <td className="p-3 text-center">{unlockedMarksheet.theoryMarks}%</td>
-                          </tr>
-                          <tr>
-                            <td className="p-3 font-semibold">ব্যবহারিক পরীক্ষা (Practical Workshop)</td>
-                            <td className="p-3 text-center">100</td>
-                            <td className="p-3 text-center font-bold text-slate-900">{unlockedMarksheet.practicalMarks}</td>
-                            <td className="p-3 text-center">{unlockedMarksheet.practicalMarks}%</td>
-                          </tr>
-                          <tr className="bg-slate-50 font-bold">
-                            <td className="p-3 text-slate-900 uppercase">সর্বমোট ফলাফল (Total Result)</td>
-                            <td className="p-3 text-center">200</td>
-                            <td className="p-3 text-center text-teal-800 text-sm font-black">{unlockedMarksheet.totalMarks}</td>
-                            <td className="p-3 text-center text-teal-800 text-sm font-black">
-                              {unlockedMarksheet.percentage || Math.round((unlockedMarksheet.totalMarks / 200) * 100)}%
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Result Status Badge */}
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black">
-                          ✓
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-emerald-950 uppercase">পরীক্ষার চূড়ান্ত মূল্যায়ন:</p>
-                          <p className="text-sm font-black text-emerald-700">
-                            {unlockedMarksheet.resultStatus === 'PASS' ? 'PASSED / উত্তীর্ণ (CERTIFIED)' : 'FAILED'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="text-xs text-slate-500 text-right">
-                        <p>ইস্যুকারী: {unlockedMarksheet.issuedBy}</p>
-                        <p>উত্তোলনকারী অপারেটর: <b>{operator?.fullName}</b></p>
-                      </div>
-                    </div>
+                  <div className="pt-2">
+                    <OfficialMarksheetView
+                      marksheet={unlockedMarksheet}
+                      candidate={authCandidate}
+                      showActions={true}
+                    />
                   </div>
                 )}
               </div>

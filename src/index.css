@@ -1,1 +1,30 @@
 @import "tailwindcss";
+
+@media print {
+  /* Hide the rest of the application when printing */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show only the official marksheet card and its children */
+  #official-takamul-marksheet-card,
+  #official-takamul-marksheet-card * {
+    visibility: visible !important;
+  }
+
+  #official-takamul-marksheet-card {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
