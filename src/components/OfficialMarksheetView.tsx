@@ -79,6 +79,13 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
    */
   const handleDownloadPDF = async () => {
     setIsDownloading(true);
+    // Yield to the browser render pipeline so the UI updates immediately and INP is <16ms
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        setTimeout(resolve, 40);
+      });
+    });
+
     try {
       const candidateSlug = (marksheet.candidateName || 'Candidate')
         .replace(/\s+/g, '_')
@@ -469,7 +476,7 @@ export async function downloadMarksheetElementAsPDF(
         filename: fileName,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: {
-          scale: 2.2,
+          scale: 2,
           useCORS: true,
           backgroundColor: '#ffffff',
           scrollY: 0,
@@ -499,7 +506,7 @@ export async function downloadMarksheetElementAsPDF(
   const { jsPDF } = await import('jspdf');
 
   const canvas = await html2canvas(element, {
-    scale: 2.2,
+    scale: 2,
     useCORS: true,
     backgroundColor: '#ffffff',
     scrollY: 0,

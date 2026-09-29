@@ -37,6 +37,13 @@ export const CandidateMarksheet: React.FC<CandidateMarksheetProps> = ({ onNaviga
   const handleDownloadPDF = async () => {
     if (!marksheet) return;
     setIsDownloading(true);
+    // Yield to the browser render pipeline so the UI updates immediately and INP is <16ms
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        setTimeout(resolve, 40);
+      });
+    });
+
     try {
       const candidateSlug = (marksheet.candidateName || candidate?.fullName || 'Candidate')
         .replace(/\s+/g, '_')
