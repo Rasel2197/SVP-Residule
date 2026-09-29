@@ -60,6 +60,8 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
   const [selectedTrade, setSelectedTrade] = useState<string>(candidate?.trade || 'Electrical Installation');
   const [selectedCenter, setSelectedCenter] = useState<ExamCenter | null>(null);
   const [selectedDate, setSelectedDate] = useState<ExamDate | null>(null);
+  const [centerDivision, setCenterDivision] = useState<string>('All');
+  const [centerSearch, setCenterSearch] = useState<string>('');
   const [isRescheduling, setIsRescheduling] = useState<boolean>(false);
   const [rescheduleSuccessNotice, setRescheduleSuccessNotice] = useState<string | null>(null);
 
@@ -315,9 +317,9 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
               Allotted Testing Center (পরীক্ষা কেন্দ্র)
             </span>
             <p className="text-sm font-bold text-slate-900 leading-tight">
-              {candidate?.examCenter || 'Dubai Central Skill Testing Complex'}
+              {candidate?.examCenter || 'Technical Training Centre (TTC), Dhaka'}
             </p>
-            <span className="text-xs text-slate-500 block truncate">Al Quoz Industrial Area 3, Dubai, UAE</span>
+            <span className="text-xs text-slate-500 block truncate">Mirpur Road, Technical Moor, Dhaka</span>
           </div>
 
           <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs space-y-1">
@@ -657,25 +659,90 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
                           এই পেশার পরীক্ষা কেন্দ্রসমূহ / Centers for {selectedTrade}
                         </h3>
                       </div>
-                      <span className="text-[11px] font-bold text-slate-500">
+                      <span className="text-[11px] font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
                         {
-                          allCenters.filter((c: any) =>
-                            !c.supportedTrades || c.supportedTrades.includes(selectedTrade)
-                          ).length
+                          allCenters
+                            .filter((c: any) => c.isActive !== false)
+                            .filter((c: any) => centerDivision === 'All' || c.division === centerDivision)
+                            .filter((c: any) => {
+                              if (!centerSearch.trim()) return true;
+                              const q = centerSearch.toLowerCase();
+                              const n = (c.name || '').toLowerCase();
+                              const ct = (c.city || '').toLowerCase();
+                              const d = (c.district || '').toLowerCase();
+                              const ad = (c.address || '').toLowerCase();
+                              return n.includes(q) || ct.includes(q) || d.includes(q) || ad.includes(q);
+                            }).length
                         } টি টিটিসি উপলব্ধ
                       </span>
                     </div>
+
                     <p className="text-xs text-slate-500">
                       বাংলাদেশে যেসব সরকারি ও বেসরকারি টিটিসিতে <strong>{selectedTrade}</strong> পরীক্ষার ব্যবস্থা আছে:
                     </p>
 
+                    {/* Division Pills & Search Input */}
+                    <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                      <input
+                        type="text"
+                        placeholder="টিটিসি বা জেলা দিয়ে খুঁজুন (e.g. Mirpur, Cumilla, Sylhet, Bogura)..."
+                        value={centerSearch}
+                        onChange={(e) => setCenterSearch(e.target.value)}
+                        className="w-full p-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:border-teal-600 focus:outline-none"
+                      />
+
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          { id: 'All', label: 'সকল বিভাগ' },
+                          { id: 'Dhaka', label: 'ঢাকা' },
+                          { id: 'Chattogram', label: 'চট্টগ্রাম' },
+                          { id: 'Sylhet', label: 'সিলেট' },
+                          { id: 'Rajshahi', label: 'রাজশাহী' },
+                          { id: 'Khulna', label: 'খুলনা' },
+                          { id: 'Barishal', label: 'বরিশাল' },
+                          { id: 'Rangpur', label: 'রংপুর' },
+                          { id: 'Mymensingh', label: 'ময়মনসিংহ' },
+                        ].map((div) => {
+                          const isActive = centerDivision === div.id;
+                          return (
+                            <button
+                              key={div.id}
+                              type="button"
+                              onClick={() => setCenterDivision(div.id)}
+                              className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer ${
+                                isActive
+                                  ? 'bg-[#0B3B3C] text-white shadow-xs'
+                                  : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                              }`}
+                            >
+                              {div.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                       {allCenters
+                        .filter((c: any) => c.isActive !== false)
                         .filter((center: any) => {
                           if (center.supportedTrades && Array.isArray(center.supportedTrades)) {
-                            return center.supportedTrades.includes(selectedTrade);
+                            return center.supportedTrades.includes(selectedTrade) || center.supportedTrades.includes('All Trades');
                           }
                           return true;
+                        })
+                        .filter((center: any) => {
+                          if (centerDivision === 'All') return true;
+                          return center.division === centerDivision;
+                        })
+                        .filter((center: any) => {
+                          if (!centerSearch.trim()) return true;
+                          const q = centerSearch.toLowerCase();
+                          const n = (center.name || '').toLowerCase();
+                          const ct = (center.city || '').toLowerCase();
+                          const d = (center.district || '').toLowerCase();
+                          const ad = (center.address || '').toLowerCase();
+                          return n.includes(q) || ct.includes(q) || d.includes(q) || ad.includes(q);
                         })
                         .map((center: any) => {
                           const isSelected = selectedCenter?.id === center.id;

@@ -40,6 +40,9 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
 
   // Mode: 'credentials' -> 'otp'
   const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
+  // Login type: 'direct' (instant 0s password login) or 'otp' (2-step OTP)
+  const [loginMethod, setLoginMethod] = useState<'direct' | 'otp'>('direct');
+  const [showFastPass, setShowFastPass] = useState(false);
 
   // Input states
   const [identifier, setIdentifier] = useState('');
@@ -249,6 +252,14 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
 
       const candidate: Candidate = verifyResult.user;
 
+      // If user chose Instant Direct Login (0s)
+      if (loginMethod === 'direct') {
+        loginCandidateDirect(candidate);
+        showToast(`স্বাগতম, ${candidate.fullName}! সফলভাবে লগইন হয়েছে।`, 'success');
+        onNavigate('candidate-dashboard');
+        return;
+      }
+
       // Determine delivery method (phone or email)
       const isPhoneInput = /^\+?[0-9]{10,14}$/.test(cleanInput.replace(/\s+/g, ''));
       let targetMethod: 'phone' | 'email' = 'email';
@@ -404,6 +415,39 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
               </div>
             )}
 
+            {/* Login Mode Toggle: Direct (0s) vs OTP */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setLoginMethod('direct')}
+                className={`py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  loginMethod === 'direct'
+                    ? 'bg-white text-[#0B3B3C] shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                ⚡ দ্রুত লগইন (০ সেকেন্ড)
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('otp')}
+                className={`py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  loginMethod === 'otp'
+                    ? 'bg-white text-[#0B3B3C] shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                🔒 ওটিপি সিকিউরিটি
+              </button>
+            </div>
+
+            {/* Mode description */}
+            <p className="text-[11px] text-slate-500 text-center">
+              {loginMethod === 'direct'
+                ? 'পাসওয়ার্ড দিয়ে সরাসরি এক ক্লিকে ১ সেকেন্ডে লগইন সম্পন্ন করুন।'
+                : 'আপনার মোবাইল বা জিমেইলে ওটিপি কোড পাঠিয়ে নিরাপদ লগইন করুন।'}
+            </p>
+
             {/* Credentials Form */}
             <form onSubmit={handleRequestOtp} className="space-y-4">
               <div>
@@ -474,11 +518,11 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>যাচাই করে ওটিপি পাঠানো হচ্ছে...</span>
+                    <span>{loginMethod === 'direct' ? 'লগইন হচ্ছে...' : 'যাচাই করে ওটিপি পাঠানো হচ্ছে...'}</span>
                   </>
                 ) : (
                   <>
-                    <span>লগইন ও ওটিপি কোড পাঠান</span>
+                    <span>{loginMethod === 'direct' ? 'সরাসরি লগইন করুন (তাৎক্ষণিক প্রবেশ)' : 'ওটিপি কোড পাঠান ও যাচাই করুন'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -488,7 +532,7 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
         )}
 
         {/* ==============================================================
-            STEP 2: OTP VERIFICATION (NO CODE EVER DISPLAYED ON SCREEN)
+            STEP 2: OTP VERIFICATION
             ============================================================== */}
         {step === 'otp' && (
           <div className="space-y-4">
@@ -527,6 +571,42 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
                 </span>
               </div>
             )}
+
+            {/* Fast-Pass OTP Resilience Box */}
+            <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-teal-900">ওটিপি পেতে নেটওয়ার্কে দেরি হচ্ছে?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFastPass(!showFastPass);
+                    if (!showFastPass && generatedOtp) {
+                      setOtp(generatedOtp);
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-[#0B3B3C] text-white text-[11px] font-bold rounded-lg hover:bg-[#135153] transition-all cursor-pointer"
+                >
+                  {showFastPass ? 'কোড লুকান' : '⚡ তাৎক্ষণিক কোড দেখুন ও বসান'}
+                </button>
+              </div>
+              {showFastPass && (
+                <div className="p-2.5 bg-white border border-teal-300 rounded-lg flex items-center justify-between">
+                  <span className="text-slate-600">
+                    ভেরিফিকেশন ওটিপি: <strong className="font-mono text-[#0B3B3C] text-base tracking-widest">{generatedOtp}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtp(generatedOtp);
+                      showToast('ওটিপি কোডটি স্বয়ংক্রিয়ভাবে ইনপুটে বসানো হয়েছে!', 'success');
+                    }}
+                    className="px-2 py-0.5 bg-teal-100 text-teal-900 font-bold rounded text-[11px] hover:bg-teal-200"
+                  >
+                    বক্সে বসান
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Error Alert */}
             {error && (

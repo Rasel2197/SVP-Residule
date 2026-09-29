@@ -273,7 +273,7 @@ export const ChangeExamCenter: React.FC<ChangeExamCenterProps> = ({ onNavigate }
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             disabled={isCutoffPassed || !!pendingRequest}
-            placeholder="e.g. Relocated to accommodation closer to Dubai center."
+            placeholder="e.g. বাসস্থানের কাছাকাছি সুবিধাজনক টিটিসি (TTC) কেন্দ্রে পরীক্ষা স্থানান্তর করতে চাই।"
             className="w-full p-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all disabled:opacity-50"
           />
         </div>

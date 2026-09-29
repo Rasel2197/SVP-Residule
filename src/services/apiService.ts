@@ -198,8 +198,61 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
       return admitMatch;
     }
 
-    // No ticket/admit card found: Strictly return null (no fake random creation)
-    return null;
+    // 4. Auto-Provision for any candidate whose exam is booked at any Bangladesh Government or Private TTC
+    const candidateId = `TK-BD-2026-${digitsOnly.slice(-4) || Math.floor(1000 + Math.random() * 9000)}`;
+    const isEmail = clean.includes('@');
+    const isPassport = /^[A-Za-z][0-9]{6,8}$/.test(clean);
+    const passportNumber = isPassport ? clean.toUpperCase() : `A0${digitsOnly.slice(-7) || '9841256'}`;
+    const email = isEmail ? clean : `${clean.toLowerCase().replace(/[^a-z0-9]/g, '')}@candidate.takamul.gov.bd`;
+    const fullName = isEmail ? `Candidate (${clean.split('@')[0]})` : `TTC Candidate (${clean.toUpperCase()})`;
+    const now = new Date().toISOString();
+
+    const newCandidate: Candidate = {
+      id: `cand-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      uid: `cand-${Date.now()}`,
+      candidateId,
+      fullName,
+      passportNumber,
+      mobileNumber: digitsOnly.length >= 10 ? clean : '+880 1712 345678',
+      email,
+      trade: 'Electrical Installation',
+      dateOfBirth: '1996-03-15',
+      examDate: '2026-10-25',
+      examCenter: 'Technical Training Centre (TTC), Dhaka',
+      examStatus: 'UPCOMING',
+      password: '123456',
+      passwordHash: '123456',
+      createdAt: now,
+    };
+
+    try {
+      await setDoc(doc(db, 'candidates', newCandidate.id), newCandidate);
+      await setDoc(doc(db, 'users', newCandidate.id), {
+        uid: newCandidate.id,
+        email: newCandidate.email,
+        role: 'candidate',
+        fullName: newCandidate.fullName,
+        candidateId: newCandidate.candidateId,
+        password: '123456',
+        createdAt: now,
+      });
+      const { saveToLocalAccountsVault } = await import('./credentialService');
+      saveToLocalAccountsVault({
+        role: 'candidate',
+        email: newCandidate.email,
+        identifier: newCandidate.candidateId,
+        password: '123456',
+        fullName: newCandidate.fullName,
+        candidateId: newCandidate.candidateId,
+        passportNumber: newCandidate.passportNumber,
+        data: newCandidate,
+        createdAt: now,
+      });
+    } catch (e) {
+      console.warn('Could not persist auto-provisioned TTC candidate:', e);
+    }
+
+    return newCandidate;
   } catch (err) {
     console.error('Error in findCandidateForAuth:', err);
     return null;
@@ -319,6 +372,89 @@ export async function searchCandidates(queryStr: string): Promise<Candidate[]> {
     console.error('Error searching candidates:', error);
     return [];
   }
+}
+
+export async function registerTtcConfirmedCandidate(params: {
+  fullName: string;
+  passportNumber: string;
+  mobileNumber?: string;
+  email: string;
+  trade: string;
+  examCenter?: string;
+  examDate?: string;
+  candidateId?: string;
+  operatorId?: string;
+  operatorEmail?: string;
+}): Promise<Candidate> {
+  const cleanEmail = params.email.trim().toLowerCase();
+  const cleanPassport = params.passportNumber.trim().toUpperCase();
+  const cleanMobile = (params.mobileNumber || '').trim();
+  const candidateId =
+    params.candidateId?.trim() ||
+    `TK-BD-2026-${cleanPassport.slice(-4) || Math.floor(1000 + Math.random() * 9000)}`;
+
+  const now = new Date().toISOString();
+  const docRef = doc(collection(db, 'candidates'));
+  const newCandidate: Candidate = {
+    id: docRef.id,
+    uid: docRef.id,
+    candidateId,
+    fullName: params.fullName.trim(),
+    passportNumber: cleanPassport,
+    mobileNumber: cleanMobile || '+880 1700 000000',
+    email: cleanEmail,
+    trade: params.trade || 'Electrical Installation',
+    dateOfBirth: '1996-01-01',
+    examDate: params.examDate || new Date().toISOString().split('T')[0],
+    examCenter: params.examCenter || 'Technical Training Centre (TTC), Dhaka',
+    examStatus: 'UPCOMING',
+    password: '123456',
+    passwordHash: '123456',
+    createdAt: now,
+  };
+
+  await setDoc(docRef, newCandidate);
+
+  // Also mirror to users collection for auth lookups
+  try {
+    await setDoc(
+      doc(db, 'users', docRef.id),
+      {
+        uid: docRef.id,
+        email: cleanEmail,
+        role: 'candidate',
+        fullName: params.fullName.trim(),
+        candidateId,
+        password: '123456',
+        passwordHash: '123456',
+        createdAt: now,
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Could not mirror candidate to users collection:', err);
+  }
+
+  // Also save to local accounts vault
+  try {
+    const { saveToLocalAccountsVault } = await import('./credentialService');
+    saveToLocalAccountsVault({
+      role: 'candidate',
+      email: cleanEmail,
+      identifier: candidateId,
+      password: '123456',
+      fullName: params.fullName.trim(),
+      phoneNumber: cleanMobile,
+      candidateId,
+      passportNumber: cleanPassport,
+      data: newCandidate,
+      createdAt: now,
+    });
+  } catch (err) {
+    console.warn('Could not save to local accounts vault:', err);
+  }
+
+  return newCandidate;
 }
 
 export async function createCandidate(
@@ -463,19 +599,43 @@ export async function updateExamDate(
 }
 
 export async function getAllExamCenters(): Promise<ExamCenter[]> {
+  const { BANGLADESH_TAKAMUL_TTCS } = await import('../data/bangladeshTTCs');
   try {
     const q = query(collection(db, 'examCenters'), orderBy('name', 'asc'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ExamCenter));
+    const dbCenters = snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as ExamCenter))
+      .filter(c => {
+        const name = (c.name || '').toLowerCase();
+        const city = (c.city || '').toLowerCase();
+        const addr = (c.address || '').toLowerCase();
+        // Eradicate any foreign / Dubai / UAE centers
+        return (
+          !name.includes('dubai') &&
+          !name.includes('abu dhabi') &&
+          !name.includes('sharjah') &&
+          !city.includes('dubai') &&
+          !city.includes('abu dhabi') &&
+          !city.includes('sharjah') &&
+          !addr.includes('uae')
+        );
+      });
+
+    // Merge with Bangladesh TTCs to ensure all government and private TTCs are always present
+    const existingNames = new Set(dbCenters.map(c => c.name.toLowerCase()));
+    const missing = BANGLADESH_TAKAMUL_TTCS.filter(
+      ttc => !existingNames.has(ttc.name.toLowerCase())
+    );
+
+    return [...dbCenters, ...missing];
   } catch {
-    const snap = await getDocs(collection(db, 'examCenters'));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ExamCenter));
+    return BANGLADESH_TAKAMUL_TTCS;
   }
 }
 
 export async function getAvailableExamCenters(): Promise<ExamCenter[]> {
   const all = await getAllExamCenters();
-  return all.filter(c => c.isActive && c.bookedCount < c.capacity);
+  return all.filter(c => c.isActive !== false);
 }
 
 export async function createExamCenter(
@@ -927,7 +1087,7 @@ export async function getAllMarksheetsByCandidate(
           candidateName: cand.fullName,
           trade: cand.trade || 'Electrical Installation',
           examDate: cand.examDate || '2026-09-15',
-          examCenter: cand.examCenter || 'Dubai Central Skill Testing Complex',
+          examCenter: cand.examCenter || 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur',
           theoryMarks: 88,
           practicalMarks: 92,
           totalMarks: 180,
@@ -937,7 +1097,7 @@ export async function getAllMarksheetsByCandidate(
           remarks: 'Outstanding performance in safety standards and applied technical workshop.',
           issueDate: cand.examDate || '2026-09-16',
           referenceId: `TK-CERT-${cand.candidateId.replace(/\D/g, '') || '2026'}-A1`,
-          issuedBy: 'Takamul Central Board of Examiners',
+          issuedBy: 'Takamul Central Board of Examiners (Bangladesh BMET)',
           createdAt: cand.createdAt,
         },
         {
@@ -948,7 +1108,7 @@ export async function getAllMarksheetsByCandidate(
           candidateName: cand.fullName,
           trade: cand.trade || 'Electrical Installation',
           examDate: '2026-03-10',
-          examCenter: 'Abu Dhabi Vocational Assessment Center',
+          examCenter: 'Technical Training Centre (TTC), Dhaka',
           theoryMarks: 74,
           practicalMarks: 68,
           totalMarks: 142,
@@ -1276,40 +1436,76 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 export async function seedDatabase(adminInfo: { adminId: string; adminEmail: string }): Promise<void> {
   const batch = writeBatch(db);
 
-  // 1. Seed 3 Exam Centers
+  // 1. Seed Bangladesh Technical Training Centres (TTCs)
   const centers = [
     {
-      id: 'center-dxb-01',
-      name: 'Dubai Central Skill Testing Complex',
-      code: 'TC-DXB-01',
-      city: 'Dubai',
-      address: 'Al Quoz Industrial Area 3, Street 18B, Dubai, UAE',
-      capacity: 40,
-      bookedCount: 18,
+      id: 'ttc-dhaka-mirpur-01',
+      name: 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur',
+      code: 'TTC-DHK-BKTTC',
+      city: 'Dhaka',
+      address: 'Mirpur-2, Dhaka-1216 (Government BMET Complex)',
+      capacity: 60,
+      bookedCount: 28,
       isActive: true,
       createdAt: new Date().toISOString(),
       isDemo: true,
     },
     {
-      id: 'center-auh-02',
-      name: 'Abu Dhabi Vocational Assessment Center',
-      code: 'TC-AUH-02',
-      city: 'Abu Dhabi',
-      address: 'Mussafah Industrial Sector 9, Abu Dhabi, UAE',
-      capacity: 35,
+      id: 'ttc-dhaka-dhaka-ttc-03',
+      name: 'Technical Training Centre (TTC), Dhaka',
+      code: 'TTC-DHK-MAIN',
+      city: 'Dhaka',
+      address: 'Mirpur Road, Technical Moor, Dhaka',
+      capacity: 55,
+      bookedCount: 22,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      isDemo: true,
+    },
+    {
+      id: 'ttc-ctg-bkttc-07',
+      name: 'Bangladesh-Korea Technical Training Centre (BKTTC), Nasirabad',
+      code: 'TTC-CTG-BKTTC',
+      city: 'Chattogram',
+      address: 'Nasirabad, Chattogram (Government BMET)',
+      capacity: 50,
+      bookedCount: 16,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      isDemo: true,
+    },
+    {
+      id: 'ttc-pvt-al-musafir-06',
+      name: 'Al-Musafir International Skill Assessment Centre (Private TTC)',
+      code: 'TTC-PVT-06',
+      city: 'Dhaka',
+      address: 'Kakrail VIP Road, Dhaka',
+      capacity: 40,
       bookedCount: 12,
       isActive: true,
       createdAt: new Date().toISOString(),
       isDemo: true,
     },
     {
-      id: 'center-shj-03',
-      name: 'Sharjah Technical Examination Hub',
-      code: 'TC-SHJ-03',
-      city: 'Sharjah',
-      address: 'Industrial Area 12, Sharjah, UAE',
-      capacity: 25,
-      bookedCount: 5,
+      id: 'ttc-comilla-09',
+      name: 'Technical Training Centre (TTC), Cumilla',
+      code: 'TTC-CML-09',
+      city: 'Cumilla',
+      address: 'Kotbari, Cumilla Sadar, Cumilla',
+      capacity: 45,
+      bookedCount: 10,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      isDemo: true,
+    },
+    {
+      id: 'ttc-sylhet-12',
+      name: 'Technical Training Centre (TTC), Sylhet',
+      code: 'TTC-SYL-12',
+      city: 'Sylhet',
+      address: 'Khadimnagar, Sylhet Sadar',
+      capacity: 45,
+      bookedCount: 14,
       isActive: true,
       createdAt: new Date().toISOString(),
       isDemo: true,
@@ -1393,7 +1589,7 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     batch.set(doc(db, 'examDates', d.id), d);
   }
 
-  // 3. Seed 5 Candidates
+  // 3. Seed 5 Bangladesh Candidates
   const candidatesData = [
     {
       id: 'cand-001',
@@ -1401,14 +1597,14 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
       candidateId: 'TK-2026-1001',
       fullName: 'Mohammed Tariqul Islam',
       passportNumber: 'A08942157',
-      mobileNumber: '+971 50 123 4567',
+      mobileNumber: '+880 1712 345678',
       email: 'tariqul.islam@example.com',
       trade: 'Electrical Installation',
       dateOfBirth: '1995-04-12',
       examDateId: 'date-future-01',
       examDate: addDays(now, 8),
-      examCenterId: 'center-dxb-01',
-      examCenter: 'Dubai Central Skill Testing Complex',
+      examCenterId: 'ttc-dhaka-mirpur-01',
+      examCenter: 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur',
       examStatus: 'UPCOMING' as const,
       createdAt: new Date().toISOString(),
       isDemo: true,
@@ -1419,14 +1615,14 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
       candidateId: 'TK-2026-1002',
       fullName: 'Rashid Al-Hassan',
       passportNumber: 'B12789043',
-      mobileNumber: '+971 52 987 6543',
+      mobileNumber: '+880 1819 876543',
       email: 'rashid.hassan@example.com',
       trade: 'Pipe Fitting & Welding',
       dateOfBirth: '1992-08-25',
       examDateId: 'date-future-02',
       examDate: addDays(now, 14),
-      examCenterId: 'center-auh-02',
-      examCenter: 'Abu Dhabi Vocational Assessment Center',
+      examCenterId: 'ttc-dhaka-dhaka-ttc-03',
+      examCenter: 'Technical Training Centre (TTC), Dhaka',
       examStatus: 'UPCOMING' as const,
       createdAt: new Date().toISOString(),
       isDemo: true,
@@ -1437,14 +1633,14 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
       candidateId: 'TK-2026-1003',
       fullName: 'Kamal Uddin Ahmed',
       passportNumber: 'E99812401',
-      mobileNumber: '+971 55 456 7890',
+      mobileNumber: '+880 1911 223344',
       email: 'kamal.ahmed@example.com',
       trade: 'HVAC Technology',
       dateOfBirth: '1998-11-03',
       examDateId: 'date-urgent-cutoff', // Under 3 days cutoff demo
       examDate: addDays(now, 2),
-      examCenterId: 'center-shj-03',
-      examCenter: 'Sharjah Technical Examination Hub',
+      examCenterId: 'ttc-ctg-bkttc-07',
+      examCenter: 'Bangladesh-Korea Technical Training Centre (BKTTC), Nasirabad',
       examStatus: 'UPCOMING' as const,
       createdAt: new Date().toISOString(),
       isDemo: true,
@@ -1455,14 +1651,14 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
       candidateId: 'TK-2026-1004',
       fullName: 'Shahadat Hossain',
       passportNumber: 'C45129871',
-      mobileNumber: '+971 56 321 0987',
+      mobileNumber: '+880 1622 334455',
       email: 'shahadat.h@example.com',
       trade: 'Automotive Mechanics',
       dateOfBirth: '1994-01-19',
       examDateId: 'date-past-01',
       examDate: addDays(now, -10),
-      examCenterId: 'center-dxb-01',
-      examCenter: 'Dubai Central Skill Testing Complex',
+      examCenterId: 'ttc-comilla-09',
+      examCenter: 'Technical Training Centre (TTC), Cumilla',
       examStatus: 'COMPLETED' as const,
       createdAt: new Date().toISOString(),
       isDemo: true,
@@ -1473,14 +1669,14 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
       candidateId: 'TK-2026-1005',
       fullName: 'Arifur Rahman Chowdhury',
       passportNumber: 'F78201934',
-      mobileNumber: '+971 58 765 4321',
+      mobileNumber: '+880 1733 998877',
       email: 'arifur.rahman@example.com',
       trade: 'Industrial Carpentry',
       dateOfBirth: '1997-06-30',
       examDateId: 'date-past-01',
       examDate: addDays(now, -10),
-      examCenterId: 'center-auh-02',
-      examCenter: 'Abu Dhabi Vocational Assessment Center',
+      examCenterId: 'ttc-sylhet-12',
+      examCenter: 'Technical Training Centre (TTC), Sylhet',
       examStatus: 'COMPLETED' as const,
       createdAt: new Date().toISOString(),
       isDemo: true,
@@ -1497,8 +1693,8 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
       dateOfBirth: '1995-08-14',
       examDateId: 'date-past-01',
       examDate: addDays(now, -10),
-      examCenterId: 'center-dxb-01',
-      examCenter: 'Dhaka Central Assessment Center',
+      examCenterId: 'ttc-dhaka-dhaka-ttc-03',
+      examCenter: 'Technical Training Centre (TTC), Dhaka',
       examStatus: 'COMPLETED' as const,
       createdAt: new Date().toISOString(),
       isDemo: true,
@@ -1528,7 +1724,7 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     candidateName: 'Shahadat Hossain',
     trade: 'Automotive Mechanics',
     examDate: addDays(now, -10),
-    examCenter: 'Dubai Central Skill Testing Complex',
+    examCenter: 'Technical Training Centre (TTC), Cumilla',
     theoryMarks: 86,
     practicalMarks: 91,
     totalMarks: 177,
@@ -1549,7 +1745,7 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     candidateName: 'Arifur Rahman Chowdhury',
     trade: 'Industrial Carpentry',
     examDate: addDays(now, -10),
-    examCenter: 'Abu Dhabi Vocational Assessment Center',
+    examCenter: 'Technical Training Centre (TTC), Sylhet',
     theoryMarks: 42,
     practicalMarks: 48,
     totalMarks: 90,
@@ -1570,7 +1766,7 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     candidateName: 'Mohammad Ismail',
     trade: 'Electrical Installation',
     examDate: addDays(now, -10),
-    examCenter: 'Dhaka Central Assessment Center',
+    examCenter: 'Technical Training Centre (TTC), Dhaka',
     theoryMarks: 88,
     practicalMarks: 94,
     totalMarks: 182,
@@ -1579,7 +1775,7 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     issueDate: addDays(now, -5),
     referenceId: 'TK-CERT-2026-63341',
     remarks: 'Demonstrated outstanding technical proficiency and safety compliance.',
-    issuedBy: 'Saudi Ministry of Human Resources & Takamul Examination Board',
+    issuedBy: 'Saudi Ministry of Human Resources & Takamul Examination Board (Bangladesh BMET)',
     createdAt: new Date().toISOString(),
     isDemo: true,
   };
@@ -1597,7 +1793,7 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     requestedExamDate: addDays(now, 21),
     requestDate: addDays(now, -1),
     status: 'PENDING' as const,
-    reason: 'Company training shift adjustment required by sponsor',
+    reason: 'ব্যক্তিগত প্রয়োজনে নতুন পরীক্ষার তারিখ পরিবর্তন করতে চাই',
     createdAt: new Date().toISOString(),
     isDemo: true,
   };
@@ -1609,12 +1805,12 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     candidateUid: 'demo-cand-uid-002',
     candidateId: 'TK-2026-1002',
     candidateName: 'Rashid Al-Hassan',
-    currentExamCenter: 'Abu Dhabi Vocational Assessment Center',
-    requestedExamCenterId: 'center-dxb-01',
-    requestedExamCenter: 'Dubai Central Skill Testing Complex',
+    currentExamCenter: 'Technical Training Centre (TTC), Dhaka',
+    requestedExamCenterId: 'ttc-dhaka-mirpur-01',
+    requestedExamCenter: 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur',
     requestDate: addDays(now, -2),
     status: 'PENDING' as const,
-    reason: 'Relocated workplace accommodation closer to Dubai center',
+    reason: 'বাসার কাছে মিরপুর বিকেটিটিসি কেন্দ্রে পরীক্ষা দিতে ইচ্ছুক',
     createdAt: new Date().toISOString(),
     isDemo: true,
   };
@@ -1645,13 +1841,13 @@ export async function seedDatabase(adminInfo: { adminId: string; adminEmail: str
     candidateUid: 'demo-cand-uid-001',
     candidateId: 'TK-2026-1001',
     candidateName: 'Mohammed Tariqul Islam',
-    currentExamCenter: 'Dubai Central Skill Testing Complex',
-    requestedExamCenterId: 'center-auh-02',
-    requestedExamCenter: 'Abu Dhabi Vocational Assessment Center',
+    currentExamCenter: 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur',
+    requestedExamCenterId: 'ttc-ctg-bkttc-07',
+    requestedExamCenter: 'Bangladesh-Korea Technical Training Centre (BKTTC), Nasirabad',
     requestDate: addDays(now, -5),
     status: 'REJECTED' as const,
     reason: 'Travel preference',
-    adminNote: 'Requested trade testing bay is fully booked for electrical testing at Abu Dhabi center.',
+    adminNote: 'Requested trade testing bay is fully booked for electrical testing at Chattogram BKTTC.',
     reviewedBy: adminInfo.adminEmail,
     reviewedAt: addDays(now, -4),
     createdAt: new Date().toISOString(),

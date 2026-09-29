@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Plus, Trash2, ArrowLeft, MapPin, X } from 'lucide-react';
+import { Building2, Plus, Trash2, ArrowLeft, MapPin, X, Search } from 'lucide-react';
 import { getAvailableExamCenters, createExamCenter, deleteExamCenter } from '../../services/apiService';
 import { ExamCenter } from '../../types';
 import { useToast } from '../../components/Toast';
@@ -14,11 +14,13 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [divisionFilter, setDivisionFilter] = useState('All');
 
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    city: 'Dubai',
+    city: 'Dhaka',
     address: '',
     capacity: 100,
     bookedCount: 0,
@@ -51,7 +53,7 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
       setFormData({
         name: '',
         code: '',
-        city: 'Dubai',
+        city: 'Dhaka',
         address: '',
         capacity: 100,
         bookedCount: 0,
@@ -102,6 +104,46 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
         </button>
       </div>
 
+      {/* Filter and Search Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+        <div className="relative w-full sm:w-80">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search TTCs by name, district, or code..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-blue-600 focus:outline-none font-medium"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+          {[
+            { id: 'All', label: 'All Centers' },
+            { id: 'Dhaka', label: 'Dhaka' },
+            { id: 'Chattogram', label: 'Chattogram' },
+            { id: 'Sylhet', label: 'Sylhet' },
+            { id: 'Rajshahi', label: 'Rajshahi' },
+            { id: 'Khulna', label: 'Khulna' },
+            { id: 'Barishal', label: 'Barishal' },
+            { id: 'Rangpur', label: 'Rangpur' },
+            { id: 'Mymensingh', label: 'Mymensingh' },
+          ].map((div) => (
+            <button
+              key={div.id}
+              onClick={() => setDivisionFilter(div.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                divisionFilter === div.id
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {div.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Centers Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading ? (
@@ -117,7 +159,21 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
             </p>
           </div>
         ) : (
-          centers.map((item) => {
+          centers
+            .filter((c: any) => {
+              if (divisionFilter !== 'All' && c.division && c.division !== divisionFilter) return false;
+              if (searchTerm.trim()) {
+                const q = searchTerm.toLowerCase();
+                const n = (c.name || '').toLowerCase();
+                const ct = (c.city || '').toLowerCase();
+                const d = (c.district || '').toLowerCase();
+                const ad = (c.address || '').toLowerCase();
+                const cd = (c.code || '').toLowerCase();
+                return n.includes(q) || ct.includes(q) || d.includes(q) || ad.includes(q) || cd.includes(q);
+              }
+              return true;
+            })
+            .map((item) => {
             const availableSeats = item.capacity - (item.bookedCount || 0);
             const isFull = availableSeats <= 0;
 
@@ -215,7 +271,7 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g. Dubai Main Technical Testing Complex"
+                  placeholder="e.g. Technical Training Centre (TTC), Dhaka"
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
                 />
               </div>
@@ -228,7 +284,7 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
                     required
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                    placeholder="e.g. DXB-01"
+                    placeholder="e.g. TTC-DHK-MAIN"
                     className="w-full p-2.5 uppercase font-mono bg-slate-50 border border-slate-300 rounded-xl"
                   />
                 </div>
@@ -239,7 +295,7 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
                     required
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    placeholder="e.g. Dubai"
+                    placeholder="e.g. Dhaka"
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
                   />
                 </div>
@@ -252,7 +308,7 @@ export const AdminExamCenters: React.FC<AdminExamCentersProps> = ({ onNavigate }
                   required
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="e.g. Al Quoz Industrial Area 3, Street 18B, Dubai, UAE"
+                  placeholder="e.g. Mirpur Road, Technical Moor, Dhaka"
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
                 />
               </div>

@@ -447,7 +447,7 @@ export function generateRescheduleSlipPDF(
   doc.text('Center Address:', col1, schedY + 29);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(51, 65, 85);
-  doc.text(appointmentDetails.centerAddress || 'Official Center Premises, UAE Testing Zone', col1 + 50, schedY + 29);
+  doc.text(appointmentDetails.centerAddress || 'Approved Government / Private Technical Training Centre (TTC), Bangladesh', col1 + 50, schedY + 29);
 
   // Section 3: Important Rules & Guidelines for Candidate
   y += 66;

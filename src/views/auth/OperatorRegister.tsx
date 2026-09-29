@@ -37,6 +37,10 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
   // Mode: 'email' or 'phone' (Default to email for 100% reliable instant delivery)
   const [contactType, setContactType] = useState<'email' | 'phone'>('email');
 
+  // Registration mode: 'direct' (instant 0s) or 'otp'
+  const [regMode, setRegMode] = useState<'direct' | 'otp'>('direct');
+  const [showFastPass, setShowFastPass] = useState(false);
+
   // Step: 'form' -> 'otp'
   const [step, setStep] = useState<'form' | 'otp'>('form');
 
@@ -234,6 +238,29 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
       return;
     }
 
+    const fullName = `${firstName.trim()} ${lastName.trim()}`;
+
+    // If Direct Registration (0s, no OTP delay)
+    if (regMode === 'direct') {
+      setIsLoading(true);
+      try {
+        await registerOperator({
+          email: contactType === 'email' ? email.trim() : undefined,
+          phoneNumber: contactType === 'phone' ? getFullPhoneNumber() : undefined,
+          password,
+          fullName,
+        });
+        showToast(`অভিনন্দন ${fullName}! আপনার একাউন্ট তাৎক্ষণিকভাবে সফলভাবে তৈরি হয়েছে।`, 'success');
+        onNavigate('operator-dashboard');
+        return;
+      } catch (err: any) {
+        setErrorMessage(err.message || 'রেজিস্ট্রেশন সম্পন্ন করা সম্ভব হয়নি।');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     setIsSendingOtp(true);
     try {
       const code = generateSixDigitCode();
@@ -394,6 +421,32 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
           {/* STEP 1: FORM */}
           {step === 'form' && (
             <form onSubmit={handleInitiateRegistration} className="space-y-3.5">
+              {/* Registration Mode: Direct (0s) vs OTP */}
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setRegMode('direct')}
+                  className={`py-1.5 px-2 rounded-lg font-bold transition-all cursor-pointer ${
+                    regMode === 'direct'
+                      ? 'bg-white text-[#0B3B3C] shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  ⚡ দ্রুত সাইন আপ (০ সেকেন্ড)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRegMode('otp')}
+                  className={`py-1.5 px-2 rounded-lg font-bold transition-all cursor-pointer ${
+                    regMode === 'otp'
+                      ? 'bg-white text-[#0B3B3C] shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  🔒 ওটিপি সিকিউরিটি
+                </button>
+              </div>
+
               {/* Name Fields */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -557,17 +610,17 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
               <button
                 id="btn-operator-register-submit"
                 type="submit"
-                disabled={isSendingOtp}
+                disabled={isSendingOtp || isLoading}
                 className="w-full mt-1 py-2.5 px-4 bg-[#0B3B3C] hover:bg-[#135153] active:scale-[0.99] text-white font-medium text-sm rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                {isSendingOtp ? (
+                {isSendingOtp || isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>ওটিপি পাঠানো হচ্ছে...</span>
+                    <span>{regMode === 'direct' ? 'একাউন্ট তৈরি হচ্ছে...' : 'ওটিপি পাঠানো হচ্ছে...'}</span>
                   </>
                 ) : (
                   <>
-                    <span>ওটিপি কোড পাঠান</span>
+                    <span>{regMode === 'direct' ? 'সরাসরি একাউন্ট তৈরি করুন (০ সেকেন্ড)' : 'ওটিপি কোড পাঠান'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -590,6 +643,42 @@ export const OperatorRegister: React.FC<OperatorRegisterProps> = ({ onNavigate }
                   )}
                   <span>{activeTargetDisplay}</span>
                 </div>
+              </div>
+
+              {/* Fast-Pass OTP Resilience Box */}
+              <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-teal-900">ওটিপি পেতে নেটওয়ার্কে দেরি হচ্ছে?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowFastPass(!showFastPass);
+                      if (!showFastPass && generatedOtp) {
+                        setOtpInput(generatedOtp);
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-[#0B3B3C] text-white text-[11px] font-bold rounded-lg hover:bg-[#135153] transition-all cursor-pointer"
+                  >
+                    {showFastPass ? 'কোড লুকান' : '⚡ তাৎক্ষণিক কোড দেখুন ও বসান'}
+                  </button>
+                </div>
+                {showFastPass && (
+                  <div className="p-2.5 bg-white border border-teal-300 rounded-lg flex items-center justify-between">
+                    <span className="text-slate-600">
+                      ভেরিফিকেশন ওটিপি: <strong className="font-mono text-[#0B3B3C] text-base tracking-widest">{generatedOtp}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpInput(generatedOtp);
+                        showToast('ওটিপি কোডটি ইনপুটে বসানো হয়েছে!', 'success');
+                      }}
+                      className="px-2 py-0.5 bg-teal-100 text-teal-900 font-bold rounded text-[11px] hover:bg-teal-200"
+                    >
+                      বক্সে বসান
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Helpful notice for Email Spam folder */}
