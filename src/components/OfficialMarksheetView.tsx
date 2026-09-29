@@ -78,48 +78,17 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
    * Generates and downloads a clean, standalone PDF of ONLY this marksheet using html2pdf.js
    */
   const handleDownloadPDF = async () => {
-    const element = document.getElementById('official-takamul-marksheet-card');
-    if (!element) {
-      showToast('মার্কশিট এলিমেন্ট পাওয়া যায়নি।', 'error');
-      return;
-    }
-
     setIsDownloading(true);
     try {
-      // @ts-ignore
-      const html2pdfModule = await import('html2pdf.js');
-      const html2pdf = html2pdfModule.default || html2pdfModule;
-
       const candidateSlug = (marksheet.candidateName || 'Candidate')
         .replace(/\s+/g, '_')
         .replace(/[^a-zA-Z0-9_]/g, '');
       const fileName = `Takamul_SVP_Marksheet_${candidateSlug}_${passportNumber}.pdf`;
 
-      const opt: any = {
-        margin: [8, 8, 8, 8],
-        filename: fileName,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 2.5,
-          useCORS: true,
-          letterRendering: true,
-          backgroundColor: '#ffffff',
-          scrollY: 0,
-          scrollX: 0,
-          logging: false,
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: 'a4',
-          orientation: 'portrait',
-        },
-      };
-
-      // html2pdf generates PDF strictly from the #official-takamul-marksheet-card element
-      await html2pdf().set(opt).from(element).save();
+      await downloadMarksheetElementAsPDF('official-takamul-marksheet-card', fileName);
       showToast('অফিসিয়াল মার্কশিট PDF সফলভাবে ডাউনলোড হয়েছে!', 'success');
     } catch (err) {
-      console.error('html2pdf generation error:', err);
+      console.error('Marksheet PDF generation error:', err);
       showToast('পিডিএফ তৈরিতে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'error');
     } finally {
       setIsDownloading(false);
@@ -459,7 +428,28 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
 };
 
 /**
+ * Resolves the html2pdf engine reliably from window or dynamic imports
+ */
+async function getHtml2PdfEngine(): Promise<any> {
+  if (typeof (window as any).html2pdf === 'function') {
+    return (window as any).html2pdf;
+  }
+  try {
+    // @ts-ignore
+    const mod: any = await import('html2pdf.js');
+    if (typeof mod === 'function') return mod;
+    if (typeof mod.default === 'function') return mod.default;
+    if (typeof mod.default?.default === 'function') return mod.default.default;
+    if (typeof mod.html2pdf === 'function') return mod.html2pdf;
+  } catch (err) {
+    console.warn('html2pdf module import error, using canvas fallback if needed', err);
+  }
+  return typeof (window as any).html2pdf === 'function' ? (window as any).html2pdf : null;
+}
+
+/**
  * Standalone helper to download any marksheet card element as a clean PDF using html2pdf.js
+ * with automated high-fidelity fallback.
  */
 export async function downloadMarksheetElementAsPDF(
   elementId: string = 'official-takamul-marksheet-card',
@@ -470,29 +460,76 @@ export async function downloadMarksheetElementAsPDF(
     throw new Error(`Element #${elementId} not found in DOM`);
   }
 
-  // @ts-ignore
-  const html2pdfModule = await import('html2pdf.js');
-  const html2pdf = html2pdfModule.default || html2pdfModule;
+  // 1. Try html2pdf engine first
+  const html2pdf = await getHtml2PdfEngine();
+  if (html2pdf) {
+    try {
+      const opt: any = {
+        margin: [8, 8, 8, 8],
+        filename: fileName,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2.2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          scrollY: 0,
+          scrollX: 0,
+          logging: false,
+          ignoreElements: (el: Element) =>
+            el.getAttribute('data-html2canvas-ignore') === 'true' ||
+            el.classList.contains('no-print'),
+        },
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
+          orientation: 'portrait',
+        },
+      };
 
-  const opt: any = {
-    margin: [8, 8, 8, 8],
-    filename: fileName,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: {
-      scale: 2.5,
-      useCORS: true,
-      letterRendering: true,
-      backgroundColor: '#ffffff',
-      scrollY: 0,
-      scrollX: 0,
-      logging: false,
-    },
-    jsPDF: {
-      unit: 'mm',
-      format: 'a4',
-      orientation: 'portrait',
-    },
-  };
+      await html2pdf().set(opt).from(element).save();
+      return;
+    } catch (engineErr) {
+      console.warn('html2pdf engine error, executing direct canvas fallback:', engineErr);
+    }
+  }
 
-  await html2pdf().set(opt).from(element).save();
+  // 2. High-fidelity direct html2canvas + jsPDF fallback (guaranteed to render and save)
+  const html2canvasMod = await import('html2canvas');
+  const html2canvas = html2canvasMod.default || html2canvasMod;
+  const { jsPDF } = await import('jspdf');
+
+  const canvas = await html2canvas(element, {
+    scale: 2.2,
+    useCORS: true,
+    backgroundColor: '#ffffff',
+    scrollY: 0,
+    scrollX: 0,
+    logging: false,
+    ignoreElements: (el: Element) =>
+      el.getAttribute('data-html2canvas-ignore') === 'true' ||
+      el.classList.contains('no-print'),
+  });
+
+  const imgData = canvas.toDataURL('image/jpeg', 0.98);
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 8;
+  const printWidth = pageWidth - margin * 2;
+  const printHeight = (canvas.height * printWidth) / canvas.width;
+
+  pdf.addImage(
+    imgData,
+    'JPEG',
+    margin,
+    margin,
+    printWidth,
+    Math.min(printHeight, pageHeight - margin * 2)
+  );
+  pdf.save(fileName);
 }
