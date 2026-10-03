@@ -23,6 +23,7 @@ export interface Candidate {
   candidateId: string; // e.g. TK-2026-001
   fullName: string;
   passportNumber: string;
+  nationalId?: string;
   mobileNumber: string;
   email: string;
   trade: string;

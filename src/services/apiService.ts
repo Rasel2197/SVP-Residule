@@ -135,7 +135,9 @@ export async function getCandidateByUid(uid: string): Promise<Candidate | null> 
       const d = snap2.docs[0];
       return { id: d.id, ...d.data() } as Candidate;
     }
-    return null;
+
+    // 4. Fallback: search across all auth identifiers (email, users collection, etc.)
+    return await findCandidateForAuth(uid);
   } catch (error) {
     console.error('Error fetching candidate by UID:', error);
     return null;
@@ -198,61 +200,113 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
       return admitMatch;
     }
 
-    // 4. Auto-Provision for any candidate whose exam is booked at any Bangladesh Government or Private TTC
-    const candidateId = `TK-BD-2026-${digitsOnly.slice(-4) || Math.floor(1000 + Math.random() * 9000)}`;
-    const isEmail = clean.includes('@');
-    const isPassport = /^[A-Za-z][0-9]{6,8}$/.test(clean);
-    const passportNumber = isPassport ? clean.toUpperCase() : `A0${digitsOnly.slice(-7) || '9841256'}`;
-    const email = isEmail ? clean : `${clean.toLowerCase().replace(/[^a-z0-9]/g, '')}@candidate.takamul.gov.bd`;
-    const fullName = isEmail ? `Candidate (${clean.split('@')[0]})` : `TTC Candidate (${clean.toUpperCase()})`;
-    const now = new Date().toISOString();
-
-    const newCandidate: Candidate = {
-      id: `cand-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      uid: `cand-${Date.now()}`,
-      candidateId,
-      fullName,
-      passportNumber,
-      mobileNumber: digitsOnly.length >= 10 ? clean : '+880 1712 345678',
-      email,
-      trade: 'Electrical Installation',
-      dateOfBirth: '1996-03-15',
-      examDate: '2026-10-25',
-      examCenter: 'Technical Training Centre (TTC), Dhaka',
-      examStatus: 'UPCOMING',
-      password: '123456',
-      passwordHash: '123456',
-      createdAt: now,
-    };
-
+    // 4. Check users collection in Firestore (for candidate accounts)
     try {
-      await setDoc(doc(db, 'candidates', newCandidate.id), newCandidate);
-      await setDoc(doc(db, 'users', newCandidate.id), {
-        uid: newCandidate.id,
-        email: newCandidate.email,
-        role: 'candidate',
-        fullName: newCandidate.fullName,
-        candidateId: newCandidate.candidateId,
-        password: '123456',
-        createdAt: now,
+      const userSnap = await getDocs(collection(db, 'users'));
+      const matchedUserDoc = userSnap.docs.find((d) => {
+        const u = d.data() as any;
+        if (u.role && u.role !== 'candidate') return false;
+        const emailLower = u.email?.toLowerCase() || '';
+        const idLower = u.candidateId?.toLowerCase() || '';
+        const uidLower = u.uid?.toLowerCase() || d.id.toLowerCase();
+        return emailLower === clean || idLower === clean || uidLower === clean;
       });
-      const { saveToLocalAccountsVault } = await import('./credentialService');
-      saveToLocalAccountsVault({
-        role: 'candidate',
-        email: newCandidate.email,
-        identifier: newCandidate.candidateId,
-        password: '123456',
-        fullName: newCandidate.fullName,
-        candidateId: newCandidate.candidateId,
-        passportNumber: newCandidate.passportNumber,
-        data: newCandidate,
-        createdAt: now,
-      });
-    } catch (e) {
-      console.warn('Could not persist auto-provisioned TTC candidate:', e);
+
+      if (matchedUserDoc) {
+        const uData = matchedUserDoc.data() as any;
+        // Check if there is an official marksheet for this candidate to enrich real details
+        let linkedMarksheet: any = null;
+        try {
+          const msSnap = await getDocs(collection(db, 'marksheets'));
+          linkedMarksheet = msSnap.docs.map((d) => d.data()).find((m: any) => {
+            const mUid = m.candidateUid?.toLowerCase() || '';
+            const mDocId = m.candidateDocId?.toLowerCase() || '';
+            const mCandId = m.candidateId?.toLowerCase() || '';
+            const mName = m.candidateName?.toLowerCase() || '';
+            const uUid = (uData.uid || matchedUserDoc.id).toLowerCase();
+            const uCandId = (uData.candidateId || '').toLowerCase();
+            const uName = (uData.fullName || '').toLowerCase();
+            return (
+              (mUid && mUid === uUid) ||
+              (mDocId && mDocId === uUid) ||
+              (mCandId && uCandId && mCandId === uCandId) ||
+              (mName && uName && mName === uName)
+            );
+          });
+        } catch (msErr) {
+          console.warn('Could not query marksheets for user enrichment in findCandidateForAuth:', msErr);
+        }
+
+        const realCand: Candidate = {
+          id: uData.candidateDocId || uData.uid || matchedUserDoc.id,
+          uid: uData.uid || matchedUserDoc.id,
+          candidateId: uData.candidateId || linkedMarksheet?.candidateId || `TK-${digitsOnly || '2026'}`,
+          fullName: uData.fullName || linkedMarksheet?.candidateName || 'Takamul Candidate',
+          passportNumber: uData.passportNumber || 'A18294520',
+          mobileNumber: uData.mobileNumber || uData.phoneNumber || '+880 1819 633400',
+          email: uData.email || clean,
+          trade: linkedMarksheet?.trade || uData.trade || 'Electrical Installation',
+          dateOfBirth: uData.dateOfBirth || '1995-08-14',
+          examCenter: linkedMarksheet?.examCenter || uData.examCenter || 'Technical Training Centre (TTC), Dhaka',
+          examDate: linkedMarksheet?.examDate || uData.examDate || '2026-09-10',
+          examStatus: linkedMarksheet ? 'COMPLETED' : (uData.examStatus || 'UPCOMING'),
+          password: uData.password || uData.passwordHash || '123456',
+          passwordHash: uData.passwordHash || uData.password || '123456',
+          createdAt: uData.createdAt || new Date().toISOString(),
+        };
+
+        try {
+          await setDoc(doc(db, 'candidates', realCand.id), realCand, { merge: true });
+        } catch (saveErr) {
+          console.warn('Could not sync user to candidates collection:', saveErr);
+        }
+
+        return realCand;
+      }
+    } catch (uErr) {
+      console.warn('Could not query users collection in findCandidateForAuth:', uErr);
     }
 
-    return newCandidate;
+    // 5. Check marksheets collection directly by candidateId or referenceId
+    try {
+      const msSnap = await getDocs(collection(db, 'marksheets'));
+      const matchedMs = msSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any)).find((m: any) => {
+        const mCandId = m.candidateId?.toLowerCase() || '';
+        const mRef = m.referenceId?.toLowerCase() || '';
+        const mName = m.candidateName?.toLowerCase() || '';
+        return mCandId === clean || mRef === clean || (clean.length > 3 && mName.includes(clean));
+      });
+
+      if (matchedMs) {
+        const realCand: Candidate = {
+          id: matchedMs.candidateDocId || matchedMs.candidateUid || `cand-${matchedMs.candidateId}`,
+          uid: matchedMs.candidateUid || matchedMs.id,
+          candidateId: matchedMs.candidateId,
+          fullName: matchedMs.candidateName,
+          passportNumber: matchedMs.passportNumber || 'A18294520',
+          mobileNumber: matchedMs.mobileNumber || '+880 1819 633400',
+          email: matchedMs.email || clean,
+          trade: matchedMs.trade || 'Electrical Installation',
+          dateOfBirth: matchedMs.dateOfBirth || '1995-08-14',
+          examCenter: matchedMs.examCenter || 'Technical Training Centre (TTC), Dhaka',
+          examDate: matchedMs.examDate || '2026-09-10',
+          examStatus: 'COMPLETED',
+          password: '123456',
+          passwordHash: '123456',
+          createdAt: matchedMs.createdAt || new Date().toISOString(),
+        };
+        try {
+          await setDoc(doc(db, 'candidates', realCand.id), realCand, { merge: true });
+        } catch (saveErr) {
+          console.warn('Could not sync marksheet-matched candidate to candidates collection:', saveErr);
+        }
+        return realCand;
+      }
+    } catch (msErr) {
+      console.warn('Could not query marksheets in findCandidateForAuth:', msErr);
+    }
+
+    return null;
   } catch (err) {
     console.error('Error in findCandidateForAuth:', err);
     return null;
@@ -1059,14 +1113,36 @@ export async function getAllMarksheetsByCandidate(
   candidateId?: string
 ): Promise<Marksheet[]> {
   try {
-    const cleanUid = candidateUid?.trim();
+    const cleanUid = candidateUid?.trim().toLowerCase();
     const cleanId = candidateId?.trim().toLowerCase();
+
+    // Also look up candidate record to cross-match by name, id, and uid
+    let cand: Candidate | null = null;
+    try {
+      cand = (await getCandidateById(candidateUid)) || (candidateId ? await findCandidateForAuth(candidateId) : null);
+    } catch {}
+
+    const candName = cand?.fullName?.trim().toLowerCase();
+    const candDocId = cand?.id?.trim().toLowerCase();
+    const candRealUid = cand?.uid?.trim().toLowerCase();
+    const candRegId = cand?.candidateId?.trim().toLowerCase();
 
     const all = await getAllMarksheets();
     const matches = all.filter((m) => {
-      const uidMatch = cleanUid && (m.candidateUid === cleanUid || m.candidateDocId === cleanUid);
-      const idMatch = cleanId && m.candidateId?.toLowerCase() === cleanId;
-      return uidMatch || idMatch;
+      const mUid = m.candidateUid?.trim().toLowerCase();
+      const mDocId = m.candidateDocId?.trim().toLowerCase();
+      const mId = m.candidateId?.trim().toLowerCase();
+      const mRef = m.referenceId?.trim().toLowerCase();
+      const mName = m.candidateName?.trim().toLowerCase();
+
+      const uidMatch = cleanUid && (mUid === cleanUid || mDocId === cleanUid);
+      const candDocMatch = candDocId && (mDocId === candDocId || mUid === candDocId);
+      const candRealUidMatch = candRealUid && (mUid === candRealUid || mDocId === candRealUid);
+      const idMatch = cleanId && (mId === cleanId || mRef === cleanId);
+      const candIdMatch = candRegId && (mId === candRegId || mRef === candRegId);
+      const nameMatch = candName && mName && mName === candName;
+
+      return uidMatch || candDocMatch || candRealUidMatch || idMatch || candIdMatch || nameMatch;
     });
 
     if (matches.length > 0) {
@@ -1074,57 +1150,7 @@ export async function getAllMarksheetsByCandidate(
       return matches.sort((a, b) => (b.examDate || '').localeCompare(a.examDate || ''));
     }
 
-    // Fallback: If marksheet hasn't been generated in DB yet, try to find by candidate record
-    const cand = (await getCandidateById(candidateUid)) || (cleanId ? await findCandidateForAuth(cleanId) : null);
-    if (cand) {
-      // Provide historical assessment attempts
-      const sampleMarksheets: Marksheet[] = [
-        {
-          id: `ms-${cand.candidateId}-01`,
-          candidateDocId: cand.id,
-          candidateUid: cand.uid || cand.id,
-          candidateId: cand.candidateId,
-          candidateName: cand.fullName,
-          trade: cand.trade || 'Electrical Installation',
-          examDate: cand.examDate || '2026-09-15',
-          examCenter: cand.examCenter || 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur',
-          theoryMarks: 88,
-          practicalMarks: 92,
-          totalMarks: 180,
-          maxMarks: 200,
-          percentage: 90,
-          resultStatus: 'PASS',
-          remarks: 'Outstanding performance in safety standards and applied technical workshop.',
-          issueDate: cand.examDate || '2026-09-16',
-          referenceId: `TK-CERT-${cand.candidateId.replace(/\D/g, '') || '2026'}-A1`,
-          issuedBy: 'Takamul Central Board of Examiners (Bangladesh BMET)',
-          createdAt: cand.createdAt,
-        },
-        {
-          id: `ms-${cand.candidateId}-02`,
-          candidateDocId: cand.id,
-          candidateUid: cand.uid || cand.id,
-          candidateId: cand.candidateId,
-          candidateName: cand.fullName,
-          trade: cand.trade || 'Electrical Installation',
-          examDate: '2026-03-10',
-          examCenter: 'Technical Training Centre (TTC), Dhaka',
-          theoryMarks: 74,
-          practicalMarks: 68,
-          totalMarks: 142,
-          maxMarks: 200,
-          percentage: 71,
-          resultStatus: 'PASS',
-          remarks: 'Standard qualification verified - Stage 1 Foundations.',
-          issueDate: '2026-03-12',
-          referenceId: `TK-CERT-${cand.candidateId.replace(/\D/g, '') || '2026'}-A2`,
-          issuedBy: 'National Skill Verification Authority',
-          createdAt: '2026-03-10T10:00:00Z',
-        },
-      ];
-      return sampleMarksheets;
-    }
-
+    // Only return REAL marksheets from the database. NEVER generate fabricated mock marksheets!
     return [];
   } catch (err) {
     console.error('Error fetching all marksheets by candidate:', err);
@@ -1204,13 +1230,11 @@ export async function directRescheduleCandidate(
   } as Candidate;
 }
 
-export async function getMarksheetByCandidateUid(candidateUid: string): Promise<Marksheet | null> {
+export async function getMarksheetByCandidateUid(candidateUid: string, candidateId?: string): Promise<Marksheet | null> {
   try {
-    const q = query(collection(db, 'marksheets'), where('candidateUid', '==', candidateUid), limit(1));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const d = snap.docs[0];
-      return { id: d.id, ...d.data() } as Marksheet;
+    const list = await getAllMarksheetsByCandidate(candidateUid, candidateId);
+    if (list.length > 0) {
+      return list[0];
     }
     return null;
   } catch (error) {

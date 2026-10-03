@@ -60,19 +60,20 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
 
   // Reservation / Cert Number
   const reservationNumber = marksheet.referenceId
-    ? marksheet.referenceId.replace(/\D/g, '').slice(-7) || '5739641'
-    : '5739641';
+    ? marksheet.referenceId.replace(/\D/g, '').slice(-7) || marksheet.candidateId?.replace(/\D/g, '') || '5739641'
+    : marksheet.candidateId?.replace(/\D/g, '') || '5739641';
 
-  // National ID
+  // Real Candidate Data (prioritize candidate real profile if present)
+  const candidateName = candidate?.fullName || marksheet.candidateName || 'Candidate';
+  const candidateTrade = candidate?.trade || marksheet.trade || 'Assessed Trade';
+  const candidateCenter = candidate?.examCenter || marksheet.examCenter || 'Bangladesh Assessment Centre';
   const nationalId =
     (candidate as any)?.nationalId ||
-    candidate?.candidateId?.replace(/\D/g, '') ||
-    marksheet.candidateId?.replace(/\D/g, '') ||
-    '9179075925';
-
-  // Passport Number
+    (marksheet as any)?.nationalId ||
+    candidate?.candidateId ||
+    'N/A';
   const passportNumber =
-    candidate?.passportNumber || (marksheet as any)?.passportNumber || 'A09012936';
+    candidate?.passportNumber || (marksheet as any)?.passportNumber || 'N/A';
 
   /**
    * Generates and downloads a clean, standalone PDF of ONLY this marksheet using html2pdf.js
@@ -226,25 +227,41 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
       {/* ========================================================================= */}
       <div
         id="official-takamul-marksheet-card"
+        style={{
+          backgroundColor: '#ffffff',
+          color: '#0f172a',
+          borderColor: '#e2e8f0',
+        }}
         className="bg-white rounded-2xl border border-slate-200 shadow-lg max-w-3xl mx-auto overflow-hidden text-slate-900 font-sans print:border-none print:shadow-none print:m-0 print:p-0"
       >
         {/* Top Header Banner */}
-        <div className="bg-[#0e8a75] text-white p-6 flex items-center justify-between relative">
+        <div
+          style={{ backgroundColor: '#0e8a75', color: '#ffffff' }}
+          className="bg-[#0e8a75] text-white p-6 flex items-center justify-between relative"
+        >
           <div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white mb-0.5">
+            <h1
+              style={{ color: '#ffffff' }}
+              className="text-xl sm:text-2xl font-black tracking-tight text-white mb-0.5"
+            >
               পরীক্ষার ফলাফল
             </h1>
-            <p className="text-xs sm:text-sm text-teal-100/90 font-normal tracking-wide">
+            <p
+              style={{ color: '#ccfbf1' }}
+              className="text-xs sm:text-sm text-teal-100 font-normal tracking-wide"
+            >
               SVP International · Skill Verification Program
             </p>
           </div>
 
           <div>
             <span
+              style={{
+                backgroundColor: isPass ? '#20b292' : '#dc2626',
+                color: '#ffffff',
+              }}
               className={`inline-block px-4 py-1 rounded-full text-xs font-black shadow-xs tracking-wider ${
-                isPass
-                  ? 'bg-[#20b292] text-white'
-                  : 'bg-rose-600 text-white'
+                isPass ? 'bg-[#20b292] text-white' : 'bg-rose-600 text-white'
               }`}
             >
               {isPass ? 'উত্তীর্ণ' : 'অনুত্তীর্ণ'}
@@ -257,56 +274,56 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-8 text-xs">
             {/* Row 1 */}
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">নাম</p>
-              <p className="text-sm font-bold text-slate-900 uppercase">
-                {marksheet.candidateName}
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">নাম</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900 uppercase">
+                {candidateName}
               </p>
             </div>
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">পেশা</p>
-              <p className="text-sm font-bold text-slate-900">
-                {marksheet.trade}
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">পেশা</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900">
+                {candidateTrade}
               </p>
             </div>
 
             {/* Row 2 */}
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">পাসপোর্ট নম্বর</p>
-              <p className="text-sm font-bold text-slate-900 font-mono">
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">পাসপোর্ট নম্বর</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900 font-mono">
                 {passportNumber}
               </p>
             </div>
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">জাতীয় পরিচয়পত্র</p>
-              <p className="text-sm font-bold text-slate-900 font-mono">
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">জাতীয় পরিচয়পত্র</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900 font-mono">
                 {nationalId}
               </p>
             </div>
 
             {/* Row 3 */}
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">পরীক্ষা কেন্দ্র</p>
-              <p className="text-sm font-bold text-slate-900 leading-snug">
-                {marksheet.examCenter}
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">পরীক্ষা কেন্দ্র</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900 leading-snug">
+                {candidateCenter}
               </p>
             </div>
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">তারিখ ও সময়</p>
-              <p className="text-sm font-bold text-slate-900">
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">তারিখ ও সময়</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900">
                 {examDateFormatted}
               </p>
             </div>
 
             {/* Row 4 */}
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">ভাষা</p>
-              <p className="text-sm font-bold text-slate-900">
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">ভাষা</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900">
                 BN
               </p>
             </div>
             <div>
-              <p className="text-[11px] font-medium text-slate-400 mb-0.5">রিজার্ভেশন নম্বর</p>
-              <p className="text-sm font-bold text-slate-900 font-mono">
+              <p style={{ color: '#94a3b8' }} className="text-[11px] font-medium text-slate-400 mb-0.5">রিজার্ভেশন নম্বর</p>
+              <p style={{ color: '#0f172a' }} className="text-sm font-bold text-slate-900 font-mono">
                 #{reservationNumber}
               </p>
             </div>
@@ -315,9 +332,9 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
 
         {/* Score Breakdown Table */}
         <div className="px-6 sm:px-8 mb-6 overflow-x-auto">
-          <table className="w-full text-xs text-left border-collapse">
+          <table className="w-full text-xs text-left border-collapse" style={{ color: '#334155' }}>
             <thead>
-              <tr className="bg-[#0e8a75] text-white font-bold">
+              <tr style={{ backgroundColor: '#0e8a75', color: '#ffffff' }} className="bg-[#0e8a75] text-white font-bold">
                 <th className="py-2.5 px-3 text-left">অংশ</th>
                 <th className="py-2.5 px-3 text-center">পূর্ণমান</th>
                 <th className="py-2.5 px-3 text-center">পেয়েছেন</th>
@@ -329,67 +346,67 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {/* CBT (MCQ) Row */}
-              <tr>
-                <td className="py-3 px-3 font-medium text-slate-800">
+              <tr style={{ borderBottomColor: '#f1f5f9' }}>
+                <td style={{ color: '#1e293b' }} className="py-3 px-3 font-medium text-slate-800">
                   CBT (MCQ)
                 </td>
-                <td className="py-3 px-3 text-center text-slate-600 font-medium">
+                <td style={{ color: '#475569' }} className="py-3 px-3 text-center text-slate-600 font-medium">
                   {cbtMax}
                 </td>
-                <td className="py-3 px-3 text-center font-bold text-slate-900">
+                <td style={{ color: '#0f172a' }} className="py-3 px-3 text-center font-bold text-slate-900">
                   {cbtObtained}
                 </td>
-                <td className="py-3 px-3 text-center text-slate-600 font-medium">
+                <td style={{ color: '#475569' }} className="py-3 px-3 text-center text-slate-600 font-medium">
                   {cbtPercent}%
                 </td>
-                <td className="py-3 px-3 text-center text-slate-600 font-medium">
+                <td style={{ color: '#475569' }} className="py-3 px-3 text-center text-slate-600 font-medium">
                   {cbtRawScore}
                 </td>
-                <td className="py-3 px-3 text-center font-bold text-emerald-600">
+                <td style={{ color: '#059669' }} className="py-3 px-3 text-center font-bold text-emerald-600">
                   {cbtCorrect}/{cbtTotalQuestions}
                 </td>
-                <td className="py-3 px-3 text-center font-bold text-rose-600">
+                <td style={{ color: '#e11d48' }} className="py-3 px-3 text-center font-bold text-rose-600">
                   {cbtWrong}
                 </td>
               </tr>
 
               {/* Practical (ব্যবহারিক) Row */}
-              <tr>
-                <td className="py-3 px-3 font-medium text-slate-800">
+              <tr style={{ borderBottomColor: '#f1f5f9' }}>
+                <td style={{ color: '#1e293b' }} className="py-3 px-3 font-medium text-slate-800">
                   Practical (ব্যবহারিক)
                 </td>
-                <td className="py-3 px-3 text-center text-slate-600 font-medium">
+                <td style={{ color: '#475569' }} className="py-3 px-3 text-center text-slate-600 font-medium">
                   {pracMax}
                 </td>
-                <td className="py-3 px-3 text-center font-bold text-slate-900">
+                <td style={{ color: '#0f172a' }} className="py-3 px-3 text-center font-bold text-slate-900">
                   {pracObtained}
                 </td>
-                <td className="py-3 px-3 text-center text-slate-600 font-medium">
+                <td style={{ color: '#475569' }} className="py-3 px-3 text-center text-slate-600 font-medium">
                   {pracPercent}%
                 </td>
-                <td className="py-3 px-3 text-center text-slate-600 font-medium">
+                <td style={{ color: '#475569' }} className="py-3 px-3 text-center text-slate-600 font-medium">
                   {pracRawScore}
                 </td>
-                <td className="py-3 px-3 text-center text-slate-400 font-bold">
+                <td style={{ color: '#94a3b8' }} className="py-3 px-3 text-center text-slate-400 font-bold">
                   —
                 </td>
-                <td className="py-3 px-3 text-center text-slate-400 font-bold">
+                <td style={{ color: '#94a3b8' }} className="py-3 px-3 text-center text-slate-400 font-bold">
                   —
                 </td>
               </tr>
 
               {/* Total (মোট) Row */}
-              <tr className="bg-[#f0fdf9] font-bold text-slate-900">
+              <tr style={{ backgroundColor: '#f0fdf9', color: '#0f172a' }} className="bg-[#f0fdf9] font-bold text-slate-900">
                 <td className="py-3 px-3">
                   মোট
                 </td>
                 <td className="py-3 px-3 text-center">
                   {totalMax}
                 </td>
-                <td className="py-3 px-3 text-center text-slate-900">
+                <td style={{ color: '#0f172a' }} className="py-3 px-3 text-center text-slate-900">
                   {totalObtained}
                 </td>
-                <td className="py-3 px-3 text-center text-slate-900">
+                <td style={{ color: '#0f172a' }} className="py-3 px-3 text-center text-slate-900">
                   {totalPercent}%
                 </td>
                 <td className="py-3 px-3 text-center"></td>
@@ -401,7 +418,7 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
         </div>
 
         {/* Footer Note and Generation Timestamp */}
-        <div className="px-6 sm:px-8 pb-6 pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-[11px] text-slate-400 gap-2 border-t border-slate-100">
+        <div style={{ borderColor: '#f1f5f9', color: '#94a3b8' }} className="px-6 sm:px-8 pb-6 pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-[11px] text-slate-400 gap-2 border-t border-slate-100">
           <p>
             এই ফলাফল SVP সিস্টেম থেকে স্বয়ংক্রিয়ভাবে তৈরি।
           </p>
@@ -433,6 +450,75 @@ export const OfficialMarksheetView: React.FC<OfficialMarksheetViewProps> = ({
     </div>
   );
 };
+
+/**
+ * Strips and normalizes any oklch color values in a cloned document/element to standard rgb/hex
+ * before html2canvas executes color parsing.
+ */
+function sanitizeOklchInClonedDoc(clonedDoc: Document, clonedElement: HTMLElement) {
+  try {
+    const canvas = clonedDoc.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+
+    const toSafeColor = (val: string): string => {
+      if (!val || typeof val !== 'string' || !val.includes('oklch')) return val;
+      if (!ctx) return '#1e293b';
+      try {
+        ctx.fillStyle = '#000000';
+        ctx.fillStyle = val;
+        return ctx.fillStyle; // Native browser 2D canvas always converts to rgb(...) or #hex
+      } catch {
+        return '#1e293b';
+      }
+    };
+
+    // 1. Sanitize all <style> blocks in the cloned document
+    const styleTags = clonedDoc.querySelectorAll('style');
+    styleTags.forEach((styleTag) => {
+      if (styleTag.textContent && styleTag.textContent.includes('oklch')) {
+        styleTag.textContent = styleTag.textContent.replace(/oklch\([^)]+\)/g, (match) => toSafeColor(match));
+      }
+    });
+
+    // 2. Walk all elements in the cloned subtree and convert all computed color styles into standard inline rgb()
+    const elements = [clonedElement, ...Array.from(clonedElement.querySelectorAll('*'))] as HTMLElement[];
+    const colorProps = [
+      'color',
+      'backgroundColor',
+      'borderColor',
+      'borderTopColor',
+      'borderBottomColor',
+      'borderLeftColor',
+      'borderRightColor',
+      'outlineColor',
+      'fill',
+      'stroke',
+    ];
+
+    elements.forEach((el) => {
+      if (!el || !el.style) return;
+      try {
+        const computed = window.getComputedStyle(el);
+        colorProps.forEach((prop) => {
+          const val = (computed as any)[prop];
+          if (val && typeof val === 'string' && val.includes('oklch')) {
+            (el.style as any)[prop] = toSafeColor(val);
+          }
+        });
+
+        if (computed.boxShadow && computed.boxShadow.includes('oklch')) {
+          el.style.boxShadow = computed.boxShadow.replace(/oklch\([^)]+\)/g, (match) => toSafeColor(match));
+        }
+      } catch {
+        // ignore individual element access errors
+      }
+    });
+  } catch (err) {
+    console.warn('oklch sanitization error:', err);
+  }
+}
 
 /**
  * Resolves the html2pdf engine reliably from window or dynamic imports
@@ -485,6 +571,9 @@ export async function downloadMarksheetElementAsPDF(
           ignoreElements: (el: Element) =>
             el.getAttribute('data-html2canvas-ignore') === 'true' ||
             el.classList.contains('no-print'),
+          onclone: (clonedDoc: Document, clonedEl: HTMLElement) => {
+            sanitizeOklchInClonedDoc(clonedDoc, clonedEl);
+          },
         },
         jsPDF: {
           unit: 'mm',
@@ -515,6 +604,9 @@ export async function downloadMarksheetElementAsPDF(
     ignoreElements: (el: Element) =>
       el.getAttribute('data-html2canvas-ignore') === 'true' ||
       el.classList.contains('no-print'),
+    onclone: (clonedDoc: Document, clonedEl: HTMLElement) => {
+      sanitizeOklchInClonedDoc(clonedDoc, clonedEl);
+    },
   });
 
   const imgData = canvas.toDataURL('image/jpeg', 0.98);

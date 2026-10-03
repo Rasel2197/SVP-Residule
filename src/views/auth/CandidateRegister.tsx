@@ -8,10 +8,16 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
+  CreditCard,
+  Wrench,
+  Building2,
+  Calendar,
+  ShieldCheck,
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast';
+import { ALL_TAKAMUL_TRADES, BANGLADESH_TAKAMUL_TTCS } from '../../data/bangladeshTTCs';
 
 interface CandidateRegisterProps {
   onNavigate: (view: string) => void;
@@ -21,8 +27,12 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
   const { registerCandidate } = useAuth();
   const { showToast } = useToast();
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [passportNumber, setPassportNumber] = useState('');
+  const [nationalId, setNationalId] = useState('');
+  const [trade, setTrade] = useState(ALL_TAKAMUL_TRADES[0] || 'Electrical Installation');
+  const [examCenter, setExamCenter] = useState(BANGLADESH_TAKAMUL_TTCS[0]?.name || 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur, Dhaka');
+  const [dateOfBirth, setDateOfBirth] = useState('1996-01-15');
   const [mobileNumber, setMobileNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,46 +48,55 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
     setError(null);
 
     // Validation
-    if (!firstName.trim() || !lastName.trim()) {
-      setError('অনুগ্রহ করে First Name এবং Last Name লিখুন।');
+    if (!fullName.trim()) {
+      setError('অনুগ্রহ করে পাসপোর্টের সাথে মিল রেখে সম্পূর্ণ নাম লিখুন।');
+      return;
+    }
+
+    if (!passportNumber.trim()) {
+      setError('অনুগ্রহ করে আপনার পাসপোর্ট নম্বর লিখুন (যেমন: A09012936)।');
       return;
     }
 
     if (!mobileNumber.trim()) {
-      setError('অনুগ্রহ করে Mobile Number লিখুন।');
+      setError('অনুগ্রহ করে মোবাইল নম্বর লিখুন।');
       return;
     }
 
-    if (!email.trim()) {
-      setError('অনুগ্রহ করে Email Address লিখুন।');
+    if (!email.trim() || !email.includes('@')) {
+      setError('অনুগ্রহ করে সঠিক ইমেইল ঠিকানা দিন।');
       return;
     }
 
     if (!password) {
-      setError('Password লিখুন।');
+      setError('পাসওয়ার্ড লিখুন।');
       return;
     }
 
     if (password.length < 6) {
-      setError('Password কমপক্ষে ৬ অক্ষরের হতে হবে।');
+      setError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Password এবং Confirm Password মিলছে না। অনুগ্রহ করে যাচাই করুন।');
+      setError('পাসওয়ার্ড এবং কনফার্ম পাসওয়ার্ড মিলছে না।');
       return;
     }
 
     setIsLoading(true);
     try {
-      const fullName = `${firstName.trim()} ${lastName.trim()}`;
       await registerCandidate({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
-        fullName,
+        fullName: fullName.trim(),
+        passportNumber: passportNumber.trim().toUpperCase(),
+        nationalId: nationalId.trim(),
+        trade,
+        examCenter,
+        dateOfBirth,
         mobileNumber: mobileNumber.trim(),
       });
-      showToast(`অভিনন্দন ${fullName}! আপনার প্রার্থী একাউন্ট সফলভাবে তৈরি হয়েছে।`, 'success');
+      showToast(`স্বাগতম ${fullName}! আপনার আসল তাকামুল প্রার্থী অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে।`, 'success');
       onNavigate('candidate-dashboard');
     } catch (err: any) {
       console.error('Registration failed:', err);
@@ -93,17 +112,17 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
   };
 
   return (
-    <div id="candidate-register-view" className="max-w-xl mx-auto my-8 sm:my-12 px-4">
-      <div className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-3xl shadow-lg border border-slate-200">
+    <div id="candidate-register-view" className="max-w-2xl mx-auto my-8 sm:my-12 px-4">
+      <div className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-3xl shadow-xl border border-slate-200">
         <div className="text-center mb-6">
           <div className="w-12 h-12 bg-teal-50 text-[#0B3B3C] rounded-2xl flex items-center justify-center mx-auto mb-3 border border-teal-100 shadow-xs">
-            <User className="w-6 h-6" />
+            <ShieldCheck className="w-6 h-6 text-[#0e8a75]" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            প্রার্থী সাইন আপ (Candidate Sign Up)
+            প্রার্থী রেজিস্ট্রেশন (Takamul SVPI Candidate Sign Up)
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            আপনার বিবরণ দিয়ে সহজে একাউন্ট তৈরি করুন
+            আপনার আসল পাসপোর্ট, এনআইডি ও ট্রেড তথ্য দিয়ে সরাসরি রিয়েল প্রোফাইল তৈরি করুন
           </p>
         </div>
 
@@ -114,43 +133,126 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* First Name & Last Name */}
+        <form onSubmit={handleSubmit} className="space-y-4 text-slate-800">
+          {/* Full Name */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Full Legal Name (পাসপোর্ট অনুযায়ী সম্পূর্ণ নাম) *
+            </label>
+            <div className="relative">
+              <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                id="input-reg-fullname"
+                type="text"
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="যেমন: MD MITUL HOSEN"
+                className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-semibold"
+              />
+            </div>
+          </div>
+
+          {/* Passport & NID */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                First Name (প্রথম নাম) *
+                Passport Number (পাসপোর্ট নম্বর) *
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  id="input-reg-firstname"
+                  id="input-reg-passport"
                   type="text"
                   required
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="e.g. Tariqul"
-                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                  value={passportNumber}
+                  onChange={(e) => setPassportNumber(e.target.value.toUpperCase())}
+                  placeholder="যেমন: A09012936"
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-mono font-bold uppercase"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Last Name (শেষ নাম / পদবি) *
+                National ID (জাতীয় পরিচয়পত্র নম্বর)
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  id="input-reg-lastname"
+                  id="input-reg-nid"
                   type="text"
-                  required
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="e.g. Islam"
-                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                  value={nationalId}
+                  onChange={(e) => setNationalId(e.target.value.replace(/\D/g, ''))}
+                  placeholder="যেমন: 9179075925"
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-mono"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Trade & Examination TTC Center */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Assessed Trade (পেশা / ট্রেড) *
+              </label>
+              <div className="relative">
+                <Wrench className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <select
+                  id="input-reg-trade"
+                  required
+                  value={trade}
+                  onChange={(e) => setTrade(e.target.value)}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-medium"
+                >
+                  {ALL_TAKAMUL_TRADES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Date of Birth (জন্ম তারিখ) *
+              </label>
+              <div className="relative">
+                <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="input-reg-dob"
+                  type="date"
+                  required
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Preferred / Assigned Examination TTC */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+              Assigned Examination TTC (পরীক্ষা কেন্দ্র) *
+            </label>
+            <div className="relative">
+              <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <select
+                id="input-reg-center"
+                required
+                value={examCenter}
+                onChange={(e) => setExamCenter(e.target.value)}
+                className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-medium"
+              >
+                {BANGLADESH_TAKAMUL_TTCS.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name} ({c.district})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -161,33 +263,33 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
                 Mobile Number (মোবাইল নম্বর) *
               </label>
               <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="input-reg-mobile"
                   type="tel"
                   required
                   value={mobileNumber}
                   onChange={(e) => setMobileNumber(e.target.value)}
-                  placeholder="e.g. 01712345678"
-                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                  placeholder="যেমন: 01712345678"
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-mono"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Email Address (ইমেইল) *
+                Takamul Registration Email (ইমেইল ঠিকানা) *
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="input-reg-email"
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="candidate@example.com"
-                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                  placeholder="যেমন: candidate@gmail.com"
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
                 />
               </div>
             </div>
@@ -200,7 +302,7 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
                 Password (পাসওয়ার্ড) *
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="input-reg-password"
                   type={showPassword ? 'text' : 'password'}
@@ -209,7 +311,7 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="কমপক্ষে ৬ অক্ষর"
-                  className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                  className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
                 />
                 <button
                   type="button"
@@ -227,7 +329,7 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
                 Confirm Password (কনফার্ম পাসওয়ার্ড) *
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="input-reg-confirm-password"
                   type={showConfirmPassword ? 'text' : 'password'}
@@ -236,7 +338,7 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="পাসওয়ার্ড পুনরায় লিখুন"
-                  className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
+                  className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all"
                 />
                 <button
                   type="button"
@@ -257,10 +359,10 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
             className="w-full mt-2 py-3 px-4 bg-[#0B3B3C] hover:bg-[#114B4D] active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
           >
             {isLoading ? (
-              'Creating Account...'
+              'Creating Real Profile...'
             ) : (
               <>
-                <span>Complete Registration (রেজিস্ট্রেশন সম্পন্ন করুন)</span>
+                <span>রেজিস্ট্রেশন সম্পন্ন করুন (Create Real Profile)</span>
                 <ArrowRight className="w-4 h-4" />
               </>
             )}
@@ -269,13 +371,13 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
 
         <div className="mt-6 pt-5 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-600">
-            ইতিমধ্যে একাউন্ট আছে?{' '}
+            ইতিমধ্যে Takamul একাউন্ট আছে?{' '}
             <button
               id="btn-goto-candidate-login"
               onClick={() => onNavigate('candidate-login')}
               className="text-[#0B3B3C] font-bold hover:underline cursor-pointer"
             >
-              লগইন করুন (Sign In Here)
+              সরাসরি লগইন করুন (Sign In Here)
             </button>
           </p>
         </div>

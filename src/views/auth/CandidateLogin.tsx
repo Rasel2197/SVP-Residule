@@ -528,6 +528,19 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
                 )}
               </button>
             </form>
+
+            {/* Switch to Register */}
+            <div className="pt-4 mt-3 border-t border-slate-100 text-center text-xs">
+              <span className="text-slate-600">Takamul-এ নতুন বা একাউন্ট নেই? </span>
+              <button
+                type="button"
+                id="btn-goto-candidate-register"
+                onClick={() => onNavigate('candidate-register')}
+                className="font-bold text-[#0B3B3C] hover:underline cursor-pointer"
+              >
+                আসল পাসপোর্ট ও ট্রেড দিয়ে রেজিস্ট্রেশন করুন (Sign Up)
+              </button>
+            </div>
           </div>
         )}
 

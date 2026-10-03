@@ -20,10 +20,10 @@ export const CandidateMarksheet: React.FC<CandidateMarksheetProps> = ({ onNaviga
   useEffect(() => {
     async function loadMarksheet() {
       if (!candidate) return;
-      const candUid = candidate.uid || candidate.candidateId;
+      const candUid = candidate.uid || candidate.id || candidate.candidateId;
       setIsLoading(true);
       try {
-        const ms = await getMarksheetByCandidateUid(candUid);
+        const ms = await getMarksheetByCandidateUid(candUid, candidate.candidateId);
         setMarksheet(ms);
       } catch (err) {
         console.error('Failed to load marksheet:', err);

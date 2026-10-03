@@ -7,7 +7,7 @@ import {
   signOut,
   sendPasswordResetEmail,
 } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { UserProfile, Candidate, UserRole, OperatorUser } from '../types';
 import {
@@ -29,6 +29,7 @@ import {
   persistCandidateRegistration,
   persistOperatorRegistration,
   verifyCredentialsStrict,
+  saveToLocalAccountsVault,
 } from '../services/credentialService';
 import { generateCandidateId } from '../utils/rules';
 
@@ -40,7 +41,11 @@ interface CandidateRegisterInput {
   fullName: string;
   mobileNumber: string;
   passportNumber?: string;
+  nationalId?: string;
   trade?: string;
+  examCenter?: string;
+  examCenterId?: string;
+  examDate?: string;
   dateOfBirth?: string;
   candidateId?: string;
 }
@@ -61,6 +66,7 @@ interface AuthContextType {
   loginCandidateDirect: (cand: Candidate) => void;
   loginOperatorDirect: (op: OperatorUser) => void;
   updateCurrentCandidate: (cand: Candidate) => void;
+  updateCandidateProfileData: (updates: Partial<Candidate>) => Promise<Candidate>;
   registerCandidate: (data: CandidateRegisterInput) => Promise<void>;
   registerOperator: (data: {
     email?: string;
@@ -421,14 +427,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         candidateId: finalCandidateId,
         fullName: data.fullName,
         passportNumber: data.passportNumber || '',
+        nationalId: data.nationalId || '',
         mobileNumber: data.mobileNumber,
         email: data.email,
-        trade: data.trade || 'General Assessment',
-        dateOfBirth: data.dateOfBirth || '2000-01-01',
+        trade: data.trade || 'Electrical Installation',
+        dateOfBirth: data.dateOfBirth || '1995-01-01',
         examDateId: defaultDateId,
-        examDate: defaultDateStr,
-        examCenterId: defaultCenterId,
-        examCenter: defaultCenterName,
+        examDate: data.examDate || defaultDateStr,
+        examCenterId: data.examCenterId || defaultCenterId,
+        examCenter: data.examCenter || defaultCenterName,
         examStatus: 'UPCOMING',
         password: data.password,
         passwordHash: data.password,
@@ -633,6 +640,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateCandidateProfileData = async (updates: Partial<Candidate>): Promise<Candidate> => {
+    if (!candidate) {
+      throw new Error('No candidate currently logged in');
+    }
+    const docId = candidate.id || candidate.uid || candidate.candidateId;
+    const now = new Date().toISOString();
+    const updatedCandidate: Candidate = {
+      ...candidate,
+      ...updates,
+      updatedAt: now,
+    };
+
+    // 1. Update in Firestore candidates collection
+    try {
+      await updateDoc(doc(db, 'candidates', docId), {
+        ...updates,
+        updatedAt: now,
+      });
+    } catch {
+      try {
+        await setDoc(doc(db, 'candidates', docId), updatedCandidate, { merge: true });
+      } catch (err2) {
+        console.warn('Firestore candidate profile update warning:', err2);
+      }
+    }
+
+    // 2. Update users collection if needed
+    try {
+      await setDoc(
+        doc(db, 'users', docId),
+        {
+          uid: docId,
+          email: updatedCandidate.email,
+          role: 'candidate',
+          fullName: updatedCandidate.fullName,
+          candidateId: updatedCandidate.candidateId,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('Firestore user update warning:', e);
+    }
+
+    // 3. Update local vault
+    try {
+      saveToLocalAccountsVault({
+        role: 'candidate',
+        email: updatedCandidate.email,
+        identifier: updatedCandidate.candidateId || updatedCandidate.email,
+        password: updatedCandidate.password || '123456',
+        fullName: updatedCandidate.fullName,
+        candidateId: updatedCandidate.candidateId,
+        passportNumber: updatedCandidate.passportNumber,
+        phoneNumber: updatedCandidate.mobileNumber,
+        data: updatedCandidate,
+        createdAt: updatedCandidate.createdAt || now,
+      });
+    } catch (e) {
+      console.warn('Vault cache update notice:', e);
+    }
+
+    // 4. Update React state
+    setCandidate(updatedCandidate);
+    if (userProfile && updatedCandidate.fullName) {
+      setUserProfile({
+        ...userProfile,
+        fullName: updatedCandidate.fullName,
+        candidateId: updatedCandidate.candidateId,
+      });
+    }
+
+    return updatedCandidate;
+  };
+
   const loginOperatorDirect = (op: OperatorUser) => {
     const profile: UserProfile = {
       uid: op.uid,
@@ -760,6 +842,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginCandidateDirect,
         loginOperatorDirect,
         updateCurrentCandidate,
+        updateCandidateProfileData,
         registerCandidate,
         registerOperator,
         setupFirstAdmin,
