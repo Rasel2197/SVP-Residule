@@ -30,6 +30,7 @@ import {
   RechargeRequest
 } from '../types';
 import { checkThreeDayCutoff, generateReferenceId, generateCandidateId } from '../utils/rules';
+import { formatRealCandidateNameFromIdentifier } from './credentialService';
 
 /* ==========================================================================
    USER & ROLE SERVICES
@@ -242,13 +243,13 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
           uid: uData.uid || matchedUserDoc.id,
           candidateId: uData.candidateId || linkedMarksheet?.candidateId || `TK-${digitsOnly || '2026'}`,
           fullName: uData.fullName || linkedMarksheet?.candidateName || 'Takamul Candidate',
-          passportNumber: uData.passportNumber || 'A18294520',
-          mobileNumber: uData.mobileNumber || uData.phoneNumber || '+880 1819 633400',
+          passportNumber: uData.passportNumber || '',
+          mobileNumber: uData.mobileNumber || uData.phoneNumber || '',
           email: uData.email || clean,
-          trade: linkedMarksheet?.trade || uData.trade || 'Electrical Installation',
+          trade: uData.trade || linkedMarksheet?.trade || '',
           dateOfBirth: uData.dateOfBirth || '1995-08-14',
-          examCenter: linkedMarksheet?.examCenter || uData.examCenter || 'Technical Training Centre (TTC), Dhaka',
-          examDate: linkedMarksheet?.examDate || uData.examDate || '2026-09-10',
+          examCenter: uData.examCenter || linkedMarksheet?.examCenter || '',
+          examDate: uData.examDate || linkedMarksheet?.examDate || '',
           examStatus: linkedMarksheet ? 'COMPLETED' : (uData.examStatus || 'UPCOMING'),
           password: uData.password || uData.passwordHash || '123456',
           passwordHash: uData.passwordHash || uData.password || '123456',
@@ -283,13 +284,13 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
           uid: matchedMs.candidateUid || matchedMs.id,
           candidateId: matchedMs.candidateId,
           fullName: matchedMs.candidateName,
-          passportNumber: matchedMs.passportNumber || 'A18294520',
-          mobileNumber: matchedMs.mobileNumber || '+880 1819 633400',
+          passportNumber: matchedMs.passportNumber || '',
+          mobileNumber: matchedMs.mobileNumber || '',
           email: matchedMs.email || clean,
-          trade: matchedMs.trade || 'Electrical Installation',
+          trade: matchedMs.trade || '',
           dateOfBirth: matchedMs.dateOfBirth || '1995-08-14',
-          examCenter: matchedMs.examCenter || 'Technical Training Centre (TTC), Dhaka',
-          examDate: matchedMs.examDate || '2026-09-10',
+          examCenter: matchedMs.examCenter || '',
+          examDate: matchedMs.examDate || '',
           examStatus: 'COMPLETED',
           password: '123456',
           passwordHash: '123456',
@@ -306,6 +307,7 @@ export async function findCandidateForAuth(identifier: string): Promise<Candidat
       console.warn('Could not query marksheets in findCandidateForAuth:', msErr);
     }
 
+    // If not found in any real records, return null so UI can prompt for real ticket intake
     return null;
   } catch (err) {
     console.error('Error in findCandidateForAuth:', err);
@@ -437,6 +439,7 @@ export async function registerTtcConfirmedCandidate(params: {
   examCenter?: string;
   examDate?: string;
   candidateId?: string;
+  password?: string;
   operatorId?: string;
   operatorEmail?: string;
 }): Promise<Candidate> {
@@ -447,6 +450,7 @@ export async function registerTtcConfirmedCandidate(params: {
     params.candidateId?.trim() ||
     `TK-BD-2026-${cleanPassport.slice(-4) || Math.floor(1000 + Math.random() * 9000)}`;
 
+  const pwd = (params.password || '').trim() || cleanPassport || '123456';
   const now = new Date().toISOString();
   const docRef = doc(collection(db, 'candidates'));
   const newCandidate: Candidate = {
@@ -455,15 +459,15 @@ export async function registerTtcConfirmedCandidate(params: {
     candidateId,
     fullName: params.fullName.trim(),
     passportNumber: cleanPassport,
-    mobileNumber: cleanMobile || '+880 1700 000000',
+    mobileNumber: cleanMobile,
     email: cleanEmail,
-    trade: params.trade || 'Electrical Installation',
+    trade: params.trade.trim(),
     dateOfBirth: '1996-01-01',
-    examDate: params.examDate || new Date().toISOString().split('T')[0],
-    examCenter: params.examCenter || 'Technical Training Centre (TTC), Dhaka',
+    examDate: params.examDate?.trim() || new Date().toISOString().split('T')[0],
+    examCenter: (params.examCenter || '').trim(),
     examStatus: 'UPCOMING',
-    password: '123456',
-    passwordHash: '123456',
+    password: pwd,
+    passwordHash: pwd,
     createdAt: now,
   };
 
@@ -479,8 +483,13 @@ export async function registerTtcConfirmedCandidate(params: {
         role: 'candidate',
         fullName: params.fullName.trim(),
         candidateId,
-        password: '123456',
-        passwordHash: '123456',
+        passportNumber: cleanPassport,
+        trade: params.trade.trim(),
+        examCenter: (params.examCenter || '').trim(),
+        examDate: newCandidate.examDate,
+        mobileNumber: cleanMobile,
+        password: pwd,
+        passwordHash: pwd,
         createdAt: now,
       },
       { merge: true }
@@ -496,7 +505,7 @@ export async function registerTtcConfirmedCandidate(params: {
       role: 'candidate',
       email: cleanEmail,
       identifier: candidateId,
-      password: '123456',
+      password: pwd,
       fullName: params.fullName.trim(),
       phoneNumber: cleanMobile,
       candidateId,
@@ -2373,5 +2382,58 @@ export async function approveRechargeRequest(
     reviewedAt: new Date().toISOString(),
     reviewedBy: adminEmail,
   });
+}
+
+/**
+ * Bulk import Takamul candidate records into Firestore database (both candidates & users collections)
+ */
+export async function bulkImportTtcCandidates(
+  candidates: Array<{
+    email: string;
+    password?: string;
+    candidateId?: string; // Takamul Ticket Number
+    fullName: string;
+    passportNumber: string;
+    trade: string;
+    examCenter?: string;
+    examDate?: string;
+    mobileNumber?: string;
+    dateOfBirth?: string;
+  }>,
+  operatorId?: string,
+  operatorEmail?: string
+): Promise<{ successful: number; failed: number; errors: string[]; importedCandidates: Candidate[] }> {
+  let successful = 0;
+  let failed = 0;
+  const errors: string[] = [];
+  const importedCandidates: Candidate[] = [];
+
+  for (const cand of candidates) {
+    try {
+      if (!cand.fullName || !cand.passportNumber) {
+        throw new Error('নাম এবং পাসপোর্ট নম্বর বাধ্যতামূলক।');
+      }
+      const newCand = await registerTtcConfirmedCandidate({
+        fullName: cand.fullName.trim(),
+        passportNumber: cand.passportNumber.trim().toUpperCase(),
+        candidateId: cand.candidateId?.trim() || undefined,
+        password: cand.password?.trim() || cand.passportNumber.trim().toUpperCase() || '123456',
+        mobileNumber: cand.mobileNumber?.trim() || '+880 1700 000000',
+        email: cand.email?.trim().toLowerCase() || `${cand.passportNumber.trim().toLowerCase()}@candidate.takamul.gov.bd`,
+        trade: cand.trade?.trim() || 'General Profession',
+        examCenter: cand.examCenter?.trim() || undefined,
+        examDate: cand.examDate?.trim() || new Date().toISOString().split('T')[0],
+        operatorId,
+        operatorEmail,
+      });
+      importedCandidates.push(newCand);
+      successful++;
+    } catch (err: any) {
+      failed++;
+      errors.push(`${cand.fullName || cand.passportNumber}: ${err.message || 'Import error'}`);
+    }
+  }
+
+  return { successful, failed, errors, importedCandidates };
 }
 

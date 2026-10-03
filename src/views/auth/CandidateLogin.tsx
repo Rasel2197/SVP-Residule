@@ -40,8 +40,8 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
 
   // Mode: 'credentials' -> 'otp'
   const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
-  // Login type: 'direct' (instant 0s password login) or 'otp' (2-step OTP)
-  const [loginMethod, setLoginMethod] = useState<'direct' | 'otp'>('direct');
+  // Login type: 'otp' (secure 2-step email OTP) or 'direct' (instant password login)
+  const [loginMethod, setLoginMethod] = useState<'direct' | 'otp'>('otp');
   const [showFastPass, setShowFastPass] = useState(false);
 
   // Input states
@@ -415,19 +415,8 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
               </div>
             )}
 
-            {/* Login Mode Toggle: Direct (0s) vs OTP */}
+            {/* Login Mode Toggle: OTP vs Direct */}
             <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setLoginMethod('direct')}
-                className={`py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  loginMethod === 'direct'
-                    ? 'bg-white text-[#0B3B3C] shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                ⚡ দ্রুত লগইন (০ সেকেন্ড)
-              </button>
               <button
                 type="button"
                 onClick={() => setLoginMethod('otp')}
@@ -437,15 +426,26 @@ export const CandidateLogin: React.FC<CandidateLoginProps> = ({ onNavigate }) =>
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                🔒 ওটিপি সিকিউরিটি
+                🔒 ইমেইল ওটিপি লগইন
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('direct')}
+                className={`py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  loginMethod === 'direct'
+                    ? 'bg-white text-[#0B3B3C] shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                ⚡ দ্রুত পাসওয়ার্ড লগইন
               </button>
             </div>
 
             {/* Mode description */}
             <p className="text-[11px] text-slate-500 text-center">
-              {loginMethod === 'direct'
-                ? 'পাসওয়ার্ড দিয়ে সরাসরি এক ক্লিকে ১ সেকেন্ডে লগইন সম্পন্ন করুন।'
-                : 'আপনার মোবাইল বা জিমেইলে ওটিপি কোড পাঠিয়ে নিরাপদ লগইন করুন।'}
+              {loginMethod === 'otp'
+                ? 'ইমেইল ও পাসওয়ার্ড দেওয়ার পর আপনার জিমেইলে ওটিপি কোড যাবে।'
+                : 'পাসওয়ার্ড দিয়ে সরাসরি এক ক্লিকে ১ সেকেন্ডে লগইন সম্পন্ন করুন।'}
             </p>
 
             {/* Credentials Form */}

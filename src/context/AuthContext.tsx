@@ -430,7 +430,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nationalId: data.nationalId || '',
         mobileNumber: data.mobileNumber,
         email: data.email,
-        trade: data.trade || 'Electrical Installation',
+        trade: data.trade || 'General Profession',
         dateOfBirth: data.dateOfBirth || '1995-01-01',
         examDateId: defaultDateId,
         examDate: data.examDate || defaultDateStr,
@@ -444,13 +444,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await setDoc(doc(db, 'candidates', uid), candidateRecord);
 
-      // Save User role mapping
-      const userProfileRecord: UserProfile = {
+      // Save User role mapping with real candidate attributes
+      const userProfileRecord: any = {
         uid,
         email: data.email,
         role: 'candidate',
         fullName: data.fullName,
         candidateId: finalCandidateId,
+        passportNumber: data.passportNumber || '',
+        trade: data.trade || '',
+        examCenter: data.examCenter || defaultCenterName,
+        examDate: data.examDate || defaultDateStr,
+        mobileNumber: data.mobileNumber || '',
         password: data.password,
         passwordHash: data.password,
         createdAt: now,

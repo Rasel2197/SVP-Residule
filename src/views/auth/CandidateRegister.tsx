@@ -30,6 +30,8 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
   const [fullName, setFullName] = useState('');
   const [passportNumber, setPassportNumber] = useState('');
   const [nationalId, setNationalId] = useState('');
+  const [ticketNumber, setTicketNumber] = useState('');
+  const [examDate, setExamDate] = useState('2026-10-03');
   const [trade, setTrade] = useState(ALL_TAKAMUL_TRADES[0] || 'Electrical Installation');
   const [examCenter, setExamCenter] = useState(BANGLADESH_TAKAMUL_TTCS[0]?.name || 'Bangladesh-Korea Technical Training Centre (BKTTC), Mirpur, Dhaka');
   const [dateOfBirth, setDateOfBirth] = useState('1996-01-15');
@@ -90,9 +92,11 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
         password,
         fullName: fullName.trim(),
         passportNumber: passportNumber.trim().toUpperCase(),
+        candidateId: ticketNumber.trim() || undefined,
         nationalId: nationalId.trim(),
         trade,
         examCenter,
+        examDate,
         dateOfBirth,
         mobileNumber: mobileNumber.trim(),
       });
@@ -153,8 +157,8 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
             </div>
           </div>
 
-          {/* Passport & NID */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          {/* Passport & Ticket & NID */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 Passport Number (পাসপোর্ট নম্বর) *
@@ -175,7 +179,24 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                National ID (জাতীয় পরিচয়পত্র নম্বর)
+                Test Ticket / ক্যান্ডিডেট আইডি
+              </label>
+              <div className="relative">
+                <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="input-reg-ticket"
+                  type="text"
+                  value={ticketNumber}
+                  onChange={(e) => setTicketNumber(e.target.value)}
+                  placeholder="যেমন: 5841823 (স্লিপ অনুযায়ী)"
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-mono font-semibold"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                National ID (জাতীয় পরিচয়পত্র)
               </label>
               <div className="relative">
                 <CreditCard className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -233,26 +254,44 @@ export const CandidateRegister: React.FC<CandidateRegisterProps> = ({ onNavigate
             </div>
           </div>
 
-          {/* Preferred / Assigned Examination TTC */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-              Assigned Examination TTC (পরীক্ষা কেন্দ্র) *
-            </label>
-            <div className="relative">
-              <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select
-                id="input-reg-center"
-                required
-                value={examCenter}
-                onChange={(e) => setExamCenter(e.target.value)}
-                className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-medium"
-              >
-                {BANGLADESH_TAKAMUL_TTCS.map((c) => (
-                  <option key={c.id} value={c.name}>
-                    {c.name} ({c.district})
-                  </option>
-                ))}
-              </select>
+          {/* Preferred / Assigned Examination TTC & Exam Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Assigned Examination TTC (পরীক্ষা কেন্দ্র) *
+              </label>
+              <div className="relative">
+                <Building2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <select
+                  id="input-reg-center"
+                  required
+                  value={examCenter}
+                  onChange={(e) => setExamCenter(e.target.value)}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-medium"
+                >
+                  {BANGLADESH_TAKAMUL_TTCS.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name} ({c.district})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Confirmed Exam Date (পরীক্ষার তারিখ)
+              </label>
+              <div className="relative">
+                <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="input-reg-examdate"
+                  type="date"
+                  value={examDate}
+                  onChange={(e) => setExamDate(e.target.value)}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#0B3B3C] focus:border-transparent transition-all font-medium"
+                />
+              </div>
             </div>
           </div>
 

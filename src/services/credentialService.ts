@@ -198,6 +198,31 @@ export async function persistOperatorRegistration(
   }
 }
 
+/**
+ * Formats a clean human-readable Bangladeshi candidate name from an email or username identifier.
+ * e.g. md_zakir_hossain@yopmail.com -> "Md. Zakir Hossain"
+ */
+export function formatRealCandidateNameFromIdentifier(identifier: string): string {
+  const clean = identifier.trim();
+  const atIdx = clean.indexOf('@');
+  const userPart = atIdx !== -1 ? clean.slice(0, atIdx) : clean;
+
+  // Split by _, ., -, or numbers
+  const rawParts = userPart.split(/[._\-+0-9]+/).filter(Boolean);
+
+  if (rawParts.length === 0) return 'Md. Candidate';
+
+  const formatted = rawParts.map((part) => {
+    const p = part.toLowerCase();
+    if (p === 'md' || p === 'mohd') return 'Md.';
+    if (p === 'mst' || p === 'most') return 'Mst.';
+    if (p === 'mohammad' || p === 'muhammad') return 'Mohammad';
+    return p.charAt(0).toUpperCase() + p.slice(1);
+  });
+
+  return formatted.join(' ');
+}
+
 export interface VerificationResult {
   success: boolean;
   role?: 'candidate' | 'operator' | 'admin';
@@ -405,13 +430,13 @@ export async function verifyCredentialsStrict(
               uid: uData.uid || matchedUserDoc.id,
               candidateId: uData.candidateId || linkedMarksheet?.candidateId || `TK-${digitsOnly || '2026'}`,
               fullName: uData.fullName || linkedMarksheet?.candidateName || 'Takamul Candidate',
-              passportNumber: uData.passportNumber || 'A18294520',
-              mobileNumber: uData.mobileNumber || uData.phoneNumber || '+880 1819 633400',
+              passportNumber: uData.passportNumber || '',
+              mobileNumber: uData.mobileNumber || uData.phoneNumber || '',
               email: uData.email || clean,
-              trade: linkedMarksheet?.trade || uData.trade || 'Electrical Installation',
-              examCenter: linkedMarksheet?.examCenter || uData.examCenter || 'Technical Training Centre (TTC), Dhaka',
-              examDate: linkedMarksheet?.examDate || uData.examDate || '2026-09-10',
-              examStatus: linkedMarksheet ? (linkedMarksheet.resultStatus === 'PASS' ? 'PASSED' : 'COMPLETED') : (uData.examStatus || 'UPCOMING'),
+              trade: uData.trade || linkedMarksheet?.trade || '',
+              examCenter: uData.examCenter || linkedMarksheet?.examCenter || '',
+              examDate: uData.examDate || linkedMarksheet?.examDate || '',
+              examStatus: uData.examStatus || (linkedMarksheet ? (linkedMarksheet.resultStatus === 'PASS' ? 'PASSED' : 'COMPLETED') : 'UPCOMING'),
               password: uData.password || uData.passwordHash || rawPass,
               passwordHash: uData.passwordHash || uData.password || rawPass,
               createdAt: uData.createdAt || new Date().toISOString(),
@@ -445,12 +470,12 @@ export async function verifyCredentialsStrict(
         });
       }
 
-      // If candidate is not found in database, DO NOT fabricate fake dummy data!
+      // If candidate not found anywhere, do NOT invent fabricated data!
       if (!candData) {
         return {
           success: false,
           reason: 'NOT_FOUND',
-          error: 'প্রার্থী একাউন্ট পাওয়া যায়নি। অনুগ্রহ করে আপনার সঠিক নিবন্ধিত ইমেইল বা আইডি প্রদান করুন, অথবা \"নতুন প্রার্থী নিবন্ধন\" বাটনে ক্লিক করে সঠিক তথ্য দিয়ে একাউন্ট তৈরি করুন।',
+          error: 'প্রার্থীর অ্যাকাউন্ট পাওয়া যায়নি। সঠিক ইমেইল, পাসপোর্ট নম্বর অথবা টিকিট আইডি দিন, অথবা প্রার্থীর মূল টিকিট দিয়ে সিস্টেমে যুক্ত করুন।',
         };
       }
 

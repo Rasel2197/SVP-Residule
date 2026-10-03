@@ -31,7 +31,8 @@ import {
   EyeOff,
   BadgeCheck,
   Fingerprint,
-  Shield
+  Shield,
+  Globe
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast';
@@ -49,8 +50,9 @@ import {
 import { Candidate, ExamDate, ExamCenter, Marksheet, CreditTransaction } from '../../types';
 import { formatDate } from '../../utils/rules';
 import { verifyCredentialsStrict } from '../../services/credentialService';
-import { BANGLADESH_TAKAMUL_TTCS, BANGLADESH_DIVISIONS } from '../../data/bangladeshTTCs';
+import { BANGLADESH_TAKAMUL_TTCS, BANGLADESH_DIVISIONS, ALL_TAKAMUL_TRADES } from '../../data/bangladeshTTCs';
 import { OfficialMarksheetView } from '../../components/OfficialMarksheetView';
+import { BulkCandidateImportModal } from '../../components/BulkCandidateImportModal';
 
 const DIVISION_BANGLA: Record<string, string> = {
   Dhaka: 'ঢাকা',
@@ -147,13 +149,18 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
   // Quick TTC Confirmed Candidate Intake Modal State
   const [isQuickIntakeOpen, setIsQuickIntakeOpen] = useState(false);
   const [quickPassport, setQuickPassport] = useState('');
+  const [quickCandidateId, setQuickCandidateId] = useState('');
   const [quickFullName, setQuickFullName] = useState('');
   const [quickMobile, setQuickMobile] = useState('');
   const [quickEmail, setQuickEmail] = useState('');
-  const [quickTrade, setQuickTrade] = useState('Electrical Installation');
-  const [quickExamCenter, setQuickExamCenter] = useState('Technical Training Centre (TTC), Dhaka');
-  const [quickExamDate, setQuickExamDate] = useState('2026-10-25');
+  const [quickPassword, setQuickPassword] = useState('');
+  const [quickTrade, setQuickTrade] = useState('Load and Unload Worker');
+  const [quickCustomTrade, setQuickCustomTrade] = useState('');
+  const [quickExamCenter, setQuickExamCenter] = useState('Bogura Technical Training Centre. Nishindara Bogura Rajshahi');
+  const [quickCustomExamCenter, setQuickCustomExamCenter] = useState('');
+  const [quickExamDate, setQuickExamDate] = useState('2026-10-03');
   const [isSavingQuickIntake, setIsSavingQuickIntake] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
   // Quick Intake submission
   const handleQuickTtcIntake = async (e: React.FormEvent) => {
@@ -170,14 +177,20 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
           ? candidateEmailInput.trim()
           : `${quickPassport.trim().toLowerCase()}@candidate.takamul.gov.bd`);
 
+      const finalTrade = quickTrade === 'CUSTOM' ? quickCustomTrade.trim() : quickTrade;
+      const finalCenter = quickExamCenter === 'CUSTOM' ? quickCustomExamCenter.trim() : quickExamCenter;
+      const finalPassword = quickPassword.trim() || quickPassport.trim().toUpperCase() || '123456';
+
       const newCand = await registerTtcConfirmedCandidate({
         fullName: quickFullName.trim(),
         passportNumber: quickPassport.trim().toUpperCase(),
+        candidateId: quickCandidateId.trim() || undefined,
+        password: finalPassword,
         mobileNumber: quickMobile.trim() || '+880 1700 000000',
         email: emailToUse,
-        trade: quickTrade,
-        examCenter: quickExamCenter,
-        examDate: quickExamDate,
+        trade: finalTrade || 'General Profession',
+        examCenter: finalCenter || undefined,
+        examDate: quickExamDate || new Date().toISOString().split('T')[0],
         operatorId: operator?.uid,
         operatorEmail: operator?.email,
       });
@@ -204,7 +217,7 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
   const handlePassportDirectVerify = async () => {
     const queryTerm = candidateEmailInput.trim();
     if (!queryTerm) {
-      showToast('অনুগ্রহ করে প্রার্থীর পাসপোর্ট নম্বর অথবা ইমেইল লিখুন।', 'error');
+      showToast('অনুগ্রহ করে প্রার্থীর পাসপোর্ট নম্বর অথবা ইমেইল বা টিকিট লিখুন।', 'error');
       return;
     }
     setIsCandidateAuthenticating(true);
@@ -216,9 +229,11 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
           setQuickPassport(queryTerm.toUpperCase());
         } else if (queryTerm.includes('@')) {
           setQuickEmail(queryTerm);
+        } else if (/^[0-9]{5,10}$/.test(queryTerm)) {
+          setQuickCandidateId(queryTerm);
         }
         setIsQuickIntakeOpen(true);
-        showToast('প্রার্থীর তথ্য অটো-লোড হচ্ছে। অনুগ্রহ করে সিট নিশ্চিত করুন।', 'info');
+        showToast('প্রার্থীর তথ্য এখনও সেভ করা নেই। স্লিপ দেখে আসল তথ্য এন্ট্রি করুন।', 'info');
         return;
       }
       setSelectedCandidate(cand);
@@ -1046,7 +1061,7 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
             {/* If Candidate NOT Authenticated: Show Candidate Login Form */}
             {!authCandidate ? (
               <div className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-200 shadow-xs space-y-5">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-800 shrink-0">
                       <ShieldCheck className="w-5 h-5 text-teal-700" />
@@ -1065,12 +1080,23 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                     </div>
                   </div>
 
-                  {selectedCandidate && (
-                    <div className="hidden sm:block text-right">
-                      <p className="text-[10px] text-slate-400 font-medium">নির্বাচিত প্রার্থী:</p>
-                      <p className="text-xs font-semibold text-slate-800">{selectedCandidate.fullName}</p>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsBulkImportOpen(true)}
+                      className="px-3.5 py-1.5 bg-teal-800 hover:bg-teal-900 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Database className="w-3.5 h-3.5 text-amber-300" />
+                      <span>📥 বাল্ক ডাটা ইমপোর্ট (Excel / CSV)</span>
+                    </button>
+
+                    {selectedCandidate && (
+                      <div className="hidden sm:block text-right border-l border-slate-200 pl-2.5">
+                        <p className="text-[10px] text-slate-400 font-medium">নির্বাচিত প্রার্থী:</p>
+                        <p className="text-xs font-semibold text-slate-800">{selectedCandidate.fullName}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {candidateAuthError && (
@@ -1083,27 +1109,61 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                       <p className="text-[11px] text-rose-900 font-medium">
                         💡 <b>টিটিসি সিট কনফার্ম করা থাকলে:</b> প্রার্থীর তথ্য এখনো এই সিস্টেমে সেভ করা নেই। আপনি এখনই ১ ক্লিকে যুক্ত করে সরাসরি রিশিডিউল শুরু করতে পারেন।
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (candidateEmailInput.includes('@')) {
-                            setQuickEmail(candidateEmailInput);
-                          } else if (candidateEmailInput) {
-                            setQuickPassport(candidateEmailInput);
-                          }
-                          setIsQuickIntakeOpen(true);
-                        }}
-                        className="px-3.5 py-1.5 bg-[#0B3B3C] hover:bg-teal-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
-                      >
-                        <PlusCircle className="w-3.5 h-3.5 text-amber-300" />
-                        <span>✨ TTC কনফার্মড প্রার্থী দ্রুত যুক্ত করুন</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (candidateEmailInput.includes('@')) {
+                              setQuickEmail(candidateEmailInput);
+                            } else if (candidateEmailInput) {
+                              setQuickPassport(candidateEmailInput);
+                            }
+                            setIsQuickIntakeOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 bg-[#0B3B3C] hover:bg-teal-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                        >
+                          <PlusCircle className="w-3.5 h-3.5 text-amber-300" />
+                          <span>✨ TTC প্রার্থী ১ ক্লিকে যুক্ত করুন</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsBulkImportOpen(true)}
+                          className="px-3.5 py-1.5 bg-teal-800 hover:bg-teal-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                        >
+                          <Database className="w-3.5 h-3.5 text-amber-300" />
+                          <span>📥 বাল্ক ইমপোর্ট (Excel / CSV)</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {candidateAuthStep === 'login' ? (
                   <form onSubmit={handleInitiateCandidateLogin} className="space-y-4 max-w-lg">
+                    {/* SVPI Live Portal Companion Helper */}
+                    <div className="p-3 bg-gradient-to-r from-teal-50 via-teal-100/40 to-emerald-50 border border-teal-200/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-teal-950 flex items-center gap-1.5 text-xs">
+                          <Globe className="w-3.5 h-3.5 text-teal-700" />
+                          SVPI লাইভ পোর্টাল ও টিকিট চেকার (Takamol SVPI)
+                        </span>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          প্রার্থীর শুধুমাত্র মেইল ও পাসওয়ার্ড দেওয়া থাকলে—১ ক্লিকে অফিশিয়াল SVPI-তে গিয়ে টিকিট কনফার্ম করতে পারেন।
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <a
+                          href="https://svp-international.pacc.sa/home"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-[#0B3B3C] hover:bg-teal-900 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
+                          <span>SVPI পোর্টাল</span>
+                        </a>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1.5">
                         ইমেইল বা ক্যান্ডিডেট আইডি / পাসপোর্ট নম্বর
@@ -1302,19 +1362,23 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                       </span>
                     </div>
                     <h3 className="text-lg font-black text-slate-900">{authCandidate.fullName}</h3>
-                    <p className="text-xs text-slate-600">
-                      পাসপোর্ট: <span className="font-mono font-semibold">{authCandidate.passportNumber}</span> | মোবাইল: {authCandidate.mobileNumber} | ইমেইল: {authCandidate.email}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+                      <span>পাসপোর্ট: <strong className="font-mono text-slate-900">{authCandidate.passportNumber}</strong></span>
+                      <span>•</span>
+                      <span>ট্রেড/পেশা: <strong className="text-teal-900 font-bold">{authCandidate.trade} {(authCandidate as any).occupationCode ? `(${((authCandidate as any).occupationCode)})` : ''}</strong></span>
+                      <span>•</span>
+                      <span>টিকিট নং: <strong className="font-mono text-slate-900">{authCandidate.candidateId}</strong></span>
+                    </div>
                   </div>
 
                   <div className="flex sm:flex-col items-end justify-between gap-2">
                     <div className="sm:text-right bg-white p-2.5 rounded-lg border border-slate-200">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase">বর্তমান পরীক্ষার শিডিউল:</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase">বর্তমান অফিশিয়াল শিডিউল:</p>
                       <p className="text-xs font-bold text-rose-700 flex items-center sm:justify-end gap-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        <span>{authCandidate.examDate || 'তারিখ নির্ধারিত নেই'}</span>
+                        <span>{authCandidate.examDate || 'তারিখ নির্ধারিত নেই'} {(authCandidate as any).examTime ? `• ${(authCandidate as any).examTime}` : ''}</span>
                       </p>
-                      <p className="text-[11px] text-slate-600 truncate max-w-[200px]">
+                      <p className="text-[11px] font-semibold text-slate-700 sm:text-right max-w-[260px] leading-tight mt-0.5">
                         {authCandidate.examCenter || 'কেন্দ্র নির্ধারিত নেই'}
                       </p>
                     </div>
@@ -2160,7 +2224,7 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
             </div>
 
             <form onSubmit={handleQuickTtcIntake} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                     পাসপোর্ট নম্বর *
@@ -2169,9 +2233,22 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                     type="text"
                     value={quickPassport}
                     onChange={(e) => setQuickPassport(e.target.value.toUpperCase())}
-                    placeholder="e.g. A09841256"
+                    placeholder="e.g. A10061651"
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 font-mono font-bold"
                     required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    টিকিট / ক্যান্ডিডেট আইডি
+                  </label>
+                  <input
+                    type="text"
+                    value={quickCandidateId}
+                    onChange={(e) => setQuickCandidateId(e.target.value)}
+                    placeholder="e.g. 5841823 (স্লিপ অনুযায়ী)"
+                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 font-mono font-semibold"
                   />
                 </div>
 
@@ -2183,25 +2260,24 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                     type="text"
                     value={quickFullName}
                     onChange={(e) => setQuickFullName(e.target.value)}
-                    placeholder="e.g. Md. Ismail Hossain"
+                    placeholder="e.g. MD ZAKIR HOSSAIN"
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 font-medium"
                     required
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    ইমেইল এড্রেস *
+                    ইমেইল এড্রেস
                   </label>
                   <input
-                    type="email"
+                    type="text"
                     value={quickEmail}
                     onChange={(e) => setQuickEmail(e.target.value)}
-                    placeholder="e.g. candidate@gmail.com বা yopmail"
+                    placeholder="e.g. zakir@gmail.com বা yopmail"
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600"
-                    required
                   />
                 </div>
 
@@ -2217,26 +2293,54 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 font-mono"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    পোর্টাল পাসওয়ার্ড
+                  </label>
+                  <input
+                    type="text"
+                    value={quickPassword}
+                    onChange={(e) => setQuickPassword(e.target.value)}
+                    placeholder="ডিফল্ট: পাসপোর্ট নম্বর বা Shamim@160"
+                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 font-mono"
+                  />
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  ট্রেড (Trade)
+                  ট্রেড / পেশা (Trade / Occupation from Slip)
                 </label>
-                <select
-                  value={quickTrade}
-                  onChange={(e) => setQuickTrade(e.target.value)}
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 font-medium"
-                >
-                  <option value="Electrical Installation">Electrical Installation</option>
-                  <option value="Pipe Fitting & Welding">Pipe Fitting & Welding</option>
-                  <option value="HVAC Technology & Refrigeration">HVAC Technology & Refrigeration</option>
-                  <option value="Automotive Mechanics">Automotive Mechanics</option>
-                  <option value="Industrial Carpentry">Industrial Carpentry</option>
-                  <option value="Masonry & Tiling">Masonry & Tiling</option>
-                  <option value="Heavy Equipment Operation">Heavy Equipment Operation</option>
-                  <option value="Plumbing & Sanitation">Plumbing & Sanitation</option>
-                </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <select
+                    value={quickTrade}
+                    onChange={(e) => setQuickTrade(e.target.value)}
+                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600 font-medium"
+                  >
+                    {ALL_TAKAMUL_TRADES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                    <option value="CUSTOM">✍️ অন্যান্য / কাস্টম ট্রেড (নিজে লিখুন)</option>
+                  </select>
+
+                  {quickTrade === 'CUSTOM' ? (
+                    <input
+                      type="text"
+                      value={quickCustomTrade}
+                      onChange={(e) => setQuickCustomTrade(e.target.value)}
+                      placeholder="স্লিপে উল্লিখিত ট্রেডের নাম লিখুন"
+                      className="w-full p-2.5 text-xs bg-white border border-teal-500 rounded-xl font-medium"
+                      required
+                    />
+                  ) : (
+                    <div className="p-2.5 bg-slate-100 rounded-xl text-xs text-slate-600 flex items-center font-medium">
+                      সিলেক্টেড ট্রেড: <strong className="ml-1 text-teal-800">{quickTrade}</strong>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -2291,6 +2395,7 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                     onChange={(e) => setQuickExamCenter(e.target.value)}
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600"
                   >
+                    <option value="CUSTOM">✍️ কাস্টম কেন্দ্র (স্লিপে থাকা ঠিকানা নিজে লিখুন)</option>
                     {ALL_DIVISIONS_LIST.filter(
                       (div) => quickCenterDivision === 'All Divisions' || quickCenterDivision === div
                     ).map((div) => {
@@ -2321,6 +2426,17 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                       );
                     })}
                   </select>
+
+                  {quickExamCenter === 'CUSTOM' && (
+                    <input
+                      type="text"
+                      value={quickCustomExamCenter}
+                      onChange={(e) => setQuickCustomExamCenter(e.target.value)}
+                      placeholder="স্লিপ অনুযায়ী কেন্দ্রের পূর্ণ নাম ও ঠিকানা লিখুন"
+                      className="w-full mt-1.5 p-2.5 text-xs bg-white border border-teal-500 rounded-xl font-medium"
+                      required
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -2333,6 +2449,9 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
                     onChange={(e) => setQuickExamDate(e.target.value)}
                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-teal-600"
                   />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    আজকের পরীক্ষা বা অ্যাডমিট কার্ডে থাকা সঠিক পরীক্ষার তারিখ দিন
+                  </p>
                 </div>
               </div>
 
@@ -2370,6 +2489,18 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
           </div>
         </div>
       )}
+
+      {/* Bulk Real Candidates Importer Modal */}
+      <BulkCandidateImportModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
+        onSuccess={(newCands) => {
+          setCandidatesList((prev) => [...newCands, ...prev]);
+          setIsBulkImportOpen(false);
+        }}
+        operatorId={operator?.uid}
+        operatorEmail={operator?.email}
+      />
     </div>
   );
 };

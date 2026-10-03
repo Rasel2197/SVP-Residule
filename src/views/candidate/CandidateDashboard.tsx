@@ -43,10 +43,11 @@ const POPULAR_TRADES = [
   { id: 'Automotive Mechanics', name: 'Automotive Mechanics', bangla: 'অটোমোটিভ মেকানিক্স (Automotive)', category: 'Automotive Engineering' },
   { id: 'Industrial Carpentry', name: 'Industrial Carpentry', bangla: 'কার্পেন্ট্রি / কাঠের কাজ (Carpentry)', category: 'Structural Carpentry' },
   { id: 'Masonry & Tile Setting', name: 'Masonry & Tile Setting', bangla: 'ম্যাসনরি / রাজমিস্ত্রি কাজ (Masonry)', category: 'Civil Works' },
+  { id: 'Load and Unload Worker', name: 'Load and Unload Worker', bangla: 'লোড ও আনলোড কর্মী (Load and Unload Worker - 933301)', category: 'General & Logistics' },
 ];
 
 export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void }> = () => {
-  const { candidate, updateCurrentCandidate } = useAuth();
+  const { candidate, currentUser, updateCurrentCandidate } = useAuth();
   const { showToast } = useToast();
 
   // Primary Action Modals
@@ -301,7 +302,7 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
               <Wrench className="w-3.5 h-3.5 text-[#0B3B3C]" />
               Assessed Profession (পেশা)
             </span>
-            <p className="text-base font-bold text-slate-900">{candidate?.trade || 'Electrical Installation'}</p>
+            <p className="text-base font-bold text-slate-900">{candidate?.trade || 'Not Assigned'}</p>
             <span className="text-xs text-slate-500">Official Certification Trade</span>
           </div>
 
@@ -310,7 +311,7 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
               <Calendar className="w-3.5 h-3.5 text-[#0B3B3C]" />
               Confirmed Exam Date (পরীক্ষার তারিখ)
             </span>
-            <p className="text-base font-bold text-[#0B3B3C]">{candidate?.examDate || '2026-09-28'}</p>
+            <p className="text-base font-bold text-[#0B3B3C]">{candidate?.examDate || 'Not Scheduled'}</p>
             <span className="text-xs text-slate-500">Reporting Time: 08:30 AM (Morning Session)</span>
           </div>
 
@@ -320,9 +321,11 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
               Allotted Testing Center (পরীক্ষা কেন্দ্র)
             </span>
             <p className="text-sm font-bold text-slate-900 leading-tight">
-              {candidate?.examCenter || 'Technical Training Centre (TTC), Dhaka'}
+              {candidate?.examCenter || 'Not Assigned'}
             </p>
-            <span className="text-xs text-slate-500 block truncate">Mirpur Road, Technical Moor, Dhaka</span>
+            <span className="text-xs text-slate-500 block truncate">
+              {candidate?.examCenter ? 'Assigned TTC Assessment Center' : 'Venue Pending Allocation'}
+            </span>
           </div>
 
           <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs space-y-1">
@@ -331,7 +334,7 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
               Passport Number (পাসপোর্ট নম্বর)
             </span>
             <p className="text-base font-mono font-bold text-slate-800">
-              {candidate?.passportNumber || 'A28941088'}
+              {candidate?.passportNumber || 'N/A'}
             </p>
             <span className="text-xs text-slate-500">Required on Exam Day</span>
           </div>
@@ -341,7 +344,7 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
               <Phone className="w-3.5 h-3.5 text-slate-400" />
               Mobile Number (মোবাইল নম্বর)
             </span>
-            <p className="text-base font-medium text-slate-800">{candidate?.mobileNumber || '+971 50 123 4567'}</p>
+            <p className="text-base font-medium text-slate-800">{candidate?.mobileNumber || 'N/A'}</p>
             <span className="text-xs text-slate-500">SMS Notifications Active</span>
           </div>
 
@@ -350,7 +353,7 @@ export const CandidateDashboard: React.FC<{ onNavigate?: (view: string) => void 
               <Mail className="w-3.5 h-3.5 text-slate-400" />
               Email Address (ইমেইল ঠিকানা)
             </span>
-            <p className="text-base font-medium text-slate-800 truncate">{candidate?.email || 'tariqul.islam@example.com'}</p>
+            <p className="text-base font-medium text-slate-800 truncate">{candidate?.email || currentUser?.email || 'N/A'}</p>
             <span className="text-xs text-slate-500">Official Correspondence</span>
           </div>
         </div>
