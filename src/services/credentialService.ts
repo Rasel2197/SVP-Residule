@@ -2,6 +2,12 @@ import { doc, getDoc, setDoc, collection, getDocs, query, where, limit } from 'f
 import { db } from '../firebase/config';
 import { Candidate, OperatorUser, UserProfile } from '../types';
 import { BANGLADESH_ADMIT_CANDIDATES } from '../data/admitCandidates';
+import { scrubLegacyPlaintextVault } from '../utils/secureSession';
+
+// Scrub any old legacy plain text passwords on initialization
+if (typeof window !== 'undefined') {
+  scrubLegacyPlaintextVault();
+}
 
 const LOCAL_ACCOUNTS_VAULT_KEY = 'takamul_credentials_vault_v2';
 
@@ -9,7 +15,7 @@ export interface StoredCredential {
   role: 'candidate' | 'operator' | 'admin';
   email: string;
   identifier: string; // email, candidateId, or username
-  password: string;
+  password?: string;
   fullName: string;
   phoneNumber?: string;
   candidateId?: string;
@@ -20,7 +26,7 @@ export interface StoredCredential {
 }
 
 /**
- * Get all stored accounts from browser local persistence cache
+ * Get all stored accounts from browser local persistence cache (sanitized)
  */
 export function getLocalAccountsVault(): Record<string, StoredCredential> {
   try {
@@ -35,7 +41,7 @@ export function getLocalAccountsVault(): Record<string, StoredCredential> {
 }
 
 /**
- * Save account credentials to browser local persistent vault
+ * Save account profile to browser local persistent vault without plaintext password
  */
 export function saveToLocalAccountsVault(account: StoredCredential): void {
   try {
@@ -43,29 +49,41 @@ export function saveToLocalAccountsVault(account: StoredCredential): void {
     const vault = getLocalAccountsVault();
     const cleanEmail = account.email.trim().toLowerCase();
     
+    // Secure copy: NEVER store raw password or passwordHash in localStorage
+    const safeAccount: StoredCredential = {
+      ...account,
+    };
+    delete safeAccount.password;
+    if (safeAccount.data && typeof safeAccount.data === 'object') {
+      const safeData = { ...safeAccount.data };
+      delete safeData.password;
+      delete safeData.passwordHash;
+      safeAccount.data = safeData;
+    }
+
     // Index by email
-    vault[cleanEmail] = account;
+    vault[cleanEmail] = safeAccount;
 
     // Index by identifier if different
     if (account.identifier && account.identifier.trim().toLowerCase() !== cleanEmail) {
-      vault[account.identifier.trim().toLowerCase()] = account;
+      vault[account.identifier.trim().toLowerCase()] = safeAccount;
     }
 
     // Index by candidateId if candidate
     if (account.candidateId) {
-      vault[account.candidateId.trim().toLowerCase()] = account;
+      vault[account.candidateId.trim().toLowerCase()] = safeAccount;
     }
 
     // Index by passportNumber if available
     if (account.passportNumber) {
-      vault[account.passportNumber.trim().toLowerCase()] = account;
+      vault[account.passportNumber.trim().toLowerCase()] = safeAccount;
     }
 
     // Index by phone if available
     if (account.phoneNumber) {
       const digits = account.phoneNumber.replace(/\D/g, '');
       if (digits) {
-        vault[digits] = account;
+        vault[digits] = safeAccount;
       }
     }
 

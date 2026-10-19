@@ -50,7 +50,8 @@ import {
 } from '../../services/apiService';
 import { Candidate, ExamDate, ExamCenter, Marksheet, CreditTransaction } from '../../types';
 import { formatDate } from '../../utils/rules';
-import { verifyCredentialsStrict } from '../../services/credentialService';
+import { verifyCredentialsStrict, persistCandidateRegistration } from '../../services/credentialService';
+import { authenticateSvpi } from '../../services/svpiService';
 import { BANGLADESH_TAKAMUL_TTCS, BANGLADESH_DIVISIONS, ALL_TAKAMUL_TRADES } from '../../data/bangladeshTTCs';
 import { OfficialMarksheetView } from '../../components/OfficialMarksheetView';
 import { BulkCandidateImportModal } from '../../components/BulkCandidateImportModal';
@@ -287,12 +288,49 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ onNavigate
 
     setIsCandidateAuthenticating(true);
     try {
+      let cand: Candidate | null = null;
       const verifyResult = await verifyCredentialsStrict(identifier, pwd, ['candidate']);
-      if (!verifyResult.success) {
-        throw new Error(verifyResult.error || 'প্রার্থীর তথ্য পাওয়া যায়নি অথবা পাসওয়ার্ড ভুল।');
+      if (verifyResult.success && verifyResult.user) {
+        cand = verifyResult.user as Candidate;
+      } else {
+        // Fallback: Authenticate via SVPI API Proxy service for real Takamol SVPI candidates
+        const svpiAuth = await authenticateSvpi({
+          identifier,
+          email: identifier.includes('@') ? identifier : undefined,
+          password: pwd,
+        });
+
+        if (svpiAuth.success && svpiAuth.data) {
+          const svpiData = svpiAuth.data;
+          const syncedCand: Candidate = {
+            id: svpiData.candidateId,
+            uid: svpiData.candidateId,
+            candidateId: svpiData.candidateId,
+            fullName: svpiData.fullName,
+            email: svpiData.email || identifier,
+            mobileNumber: '',
+            dateOfBirth: '1995-01-01',
+            passportNumber: svpiData.passportNumber,
+            trade: svpiData.trade,
+            examCenter: svpiData.examCenter,
+            examDate: svpiData.examDate,
+            examStatus: svpiData.examStatus,
+            createdAt: new Date().toISOString(),
+          };
+
+          try {
+            await persistCandidateRegistration(syncedCand, pwd);
+          } catch (pErr) {
+            console.warn('Could not persist candidate locally:', pErr);
+          }
+
+          cand = syncedCand;
+          showToast('SVPI পোর্টাল থেকে আসল ক্যান্ডিডেট ডেটা সফলভাবে সিঙ্ক হয়েছে!', 'success');
+        } else {
+          throw new Error(verifyResult.error || svpiAuth.message || 'প্রার্থীর তথ্য পাওয়া যায়নি অথবা পাসওয়ার্ড ভুল।');
+        }
       }
 
-      const cand = verifyResult.user as Candidate;
       if (!cand) {
         throw new Error('প্রার্থীর তথ্য সক্রিয় করা সম্ভব হয়নি। পুনরায় চেষ্টা করুন।');
       }

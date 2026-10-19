@@ -6,8 +6,10 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { UserProfile, Candidate, UserRole, OperatorUser } from '../types';
 import {
@@ -32,6 +34,15 @@ import {
   saveToLocalAccountsVault,
 } from '../services/credentialService';
 import { generateCandidateId } from '../utils/rules';
+import {
+  storeSessionToken,
+  retrieveSessionToken,
+  clearSessionToken,
+  SessionPayload,
+  storeSvpiTemporarySession,
+  retrieveSvpiTemporarySession,
+  clearSvpiTemporarySession,
+} from '../utils/secureSession';
 
 const SESSION_STORAGE_KEY = 'takamul_candidate_portal_auth_session';
 
@@ -63,6 +74,7 @@ interface AuthContextType {
   isLoading: boolean;
   hasAdminSetup: boolean;
   login: (email: string, password: string) => Promise<'admin' | 'operator' | 'candidate'>;
+  loginWithGoogle: () => Promise<'admin' | 'operator' | 'candidate'>;
   loginCandidateDirect: (cand: Candidate) => void;
   loginOperatorDirect: (op: OperatorUser) => void;
   updateCurrentCandidate: (cand: Candidate) => void;
@@ -85,6 +97,10 @@ interface AuthContextType {
     details: { candidateId?: string; candidateName?: string; description: string }
   ) => Promise<void>;
   checkAdminExistence: () => Promise<void>;
+  svpiSessionToken: string | null;
+  svpiCandidateData: any | null;
+  setSvpiSessionToken: (token: string, candidateData?: any) => Promise<void>;
+  clearSvpiSession: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -96,6 +112,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [operator, setOperator] = useState<OperatorUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasAdminSetup, setHasAdminSetup] = useState<boolean>(true);
+  const [svpiSessionToken, setSvpiSessionTokenState] = useState<string | null>(null);
+  const [svpiCandidateData, setSvpiCandidateDataState] = useState<any | null>(null);
+
+  const setSvpiSessionToken = async (token: string, candidateData?: any) => {
+    setSvpiSessionTokenState(token);
+    setSvpiCandidateDataState(candidateData || null);
+    await storeSvpiTemporarySession(token, candidateData);
+  };
+
+  const clearSvpiSession = () => {
+    setSvpiSessionTokenState(null);
+    setSvpiCandidateDataState(null);
+    clearSvpiTemporarySession();
+  };
 
   const checkAdminExistence = async () => {
     try {
@@ -140,11 +170,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let isMounted = true;
 
     async function initSession() {
-      // 1. Try restoring persistent session from storage
-      const stored = localStorage.getItem(SESSION_STORAGE_KEY);
-      if (stored) {
+      // 1. Try restoring persistent session from secure encrypted storage
+      let session: SessionPayload | null = await retrieveSessionToken();
+      if (!session) {
+        // Fallback migration from legacy unencrypted session
+        const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed && parsed.uid) {
+              await storeSessionToken(parsed);
+              session = await retrieveSessionToken();
+              localStorage.removeItem(SESSION_STORAGE_KEY);
+            }
+          } catch {}
+        }
+      }
+
+      if (session) {
         try {
-          const session = JSON.parse(stored);
           if (session.type === 'candidate') {
             const lookupId = session.uid || session.identifier || session.email;
             const cand = await getCandidateByUid(lookupId) || await findCandidateForAuth(lookupId);
@@ -168,8 +212,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
           } else if (session.type === 'admin') {
-            const adminLookup = session.email || session.uid || session.identifier;
-            const adminProf = await findAdminForAuth(adminLookup);
+            const adminLookup = session.email || session.uid || session.identifier || '';
+            const adminProf = adminLookup ? await findAdminForAuth(adminLookup) : null;
             if (adminProf && isMounted) {
               setUserProfile(adminProf);
               setCandidate(null);
@@ -183,8 +227,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
           } else if (session.type === 'operator') {
-            const opLookup = session.uid || session.email || session.identifier;
-            const opUser = (await getOperatorById(opLookup)) || (await findOperatorForAuth(opLookup));
+            const opLookup = session.uid || session.email || session.identifier || '';
+            const opUser = opLookup ? ((await getOperatorById(opLookup)) || (await findOperatorForAuth(opLookup))) : null;
             if (opUser && isMounted) {
               setOperator(opUser);
               setCandidate(null);
@@ -210,6 +254,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // Restore temporary SVPI proxy session token if available
+      try {
+        const tempSvpi = await retrieveSvpiTemporarySession();
+        if (tempSvpi && isMounted) {
+          setSvpiSessionTokenState(tempSvpi.token);
+          setSvpiCandidateDataState(tempSvpi.candidateData || null);
+        }
+      } catch (e) {
+        console.warn('Error restoring SVPI temporary session:', e);
+      }
+
       // 2. Firebase Auth state listener
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         if (!isMounted) return;
@@ -217,11 +272,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setCurrentUser(firebaseUser);
           await loadUserData(firebaseUser);
         } else {
-          const curStored = localStorage.getItem(SESSION_STORAGE_KEY);
-          if (!curStored) {
+          const activeSession = await retrieveSessionToken();
+          if (!activeSession) {
             setCurrentUser(null);
             setUserProfile(null);
             setCandidate(null);
+            setOperator(null);
           }
         }
         setIsLoading(false);
@@ -235,6 +291,126 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initSession();
   }, []);
+
+  const loginWithGoogle = async (): Promise<'admin' | 'operator' | 'candidate'> => {
+    setIsLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      const email = (user.email || '').toLowerCase();
+      const uid = user.uid;
+      const fullName = user.displayName || 'Google User';
+
+      // 1. Super Administrator Check
+      if (email === 'raselahmed231956@gmail.com') {
+        const adminProfile: UserProfile = {
+          uid,
+          email,
+          role: 'admin',
+          fullName: 'Rasel Ahmed (Chief Administrator)',
+          createdAt: new Date().toISOString(),
+        };
+        await setDoc(doc(db, 'users', uid), adminProfile, { merge: true });
+        setCurrentUser(user);
+        setUserProfile(adminProfile);
+        setCandidate(null);
+        setOperator(null);
+        await storeSessionToken({ type: 'admin', uid, email, identifier: email });
+        return 'admin';
+      }
+
+      // 2. Check existing user in Firestore
+      try {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const uData = userDoc.data() as any;
+          if (uData.role === 'admin') {
+            const profile: UserProfile = { uid, email, role: 'admin', fullName: uData.fullName || fullName, createdAt: uData.createdAt };
+            setCurrentUser(user);
+            setUserProfile(profile);
+            setCandidate(null);
+            setOperator(null);
+            await storeSessionToken({ type: 'admin', uid, email, identifier: email });
+            return 'admin';
+          } else if (uData.role === 'operator') {
+            const opUser = (await getOperatorById(uid)) || (await findOperatorForAuth(email));
+            if (opUser) {
+              setOperator(opUser);
+              setUserProfile({
+                uid,
+                email,
+                role: 'operator',
+                fullName: opUser.fullName,
+                createdAt: opUser.createdAt || new Date().toISOString(),
+              });
+              setCandidate(null);
+              setCurrentUser(user);
+              await storeSessionToken({ type: 'operator', uid, email, identifier: email });
+              return 'operator';
+            }
+          } else {
+            const cand = (await getCandidateByUid(uid)) || (await findCandidateForAuth(email));
+            if (cand) {
+              setCandidate(cand);
+              setUserProfile({
+                uid,
+                email,
+                role: 'candidate',
+                fullName: cand.fullName,
+                candidateId: cand.candidateId,
+                createdAt: cand.createdAt || new Date().toISOString(),
+              });
+              setOperator(null);
+              setCurrentUser(user);
+              await storeSessionToken({ type: 'candidate', uid, email, identifier: cand.candidateId || email });
+              return 'candidate';
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching existing user in Google login:', err);
+      }
+
+      // 3. New candidate registration via Google
+      const newCand: Candidate = {
+        id: uid,
+        uid,
+        candidateId: `TK-BD-${Date.now().toString().slice(-6)}`,
+        fullName,
+        email,
+        mobileNumber: '',
+        dateOfBirth: '1995-01-01',
+        passportNumber: '',
+        trade: '',
+        examCenter: '',
+        examDate: '',
+        examStatus: 'UPCOMING',
+        createdAt: new Date().toISOString(),
+      };
+
+      const userProfileRecord: UserProfile = {
+        uid,
+        email,
+        role: 'candidate',
+        fullName,
+        createdAt: new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, 'users', uid), userProfileRecord, { merge: true });
+      await setDoc(doc(db, 'candidates', uid), newCand, { merge: true });
+
+      setCurrentUser(user);
+      setCandidate(newCand);
+      setUserProfile(userProfileRecord);
+      setOperator(null);
+      await storeSessionToken({ type: 'candidate', uid, email, identifier: email });
+      return 'candidate';
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const login = async (identifier: string, password: string) => {
     setIsLoading(true);
@@ -280,15 +456,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setOperator(opUser);
         setCandidate(null);
 
-        localStorage.setItem(
-          SESSION_STORAGE_KEY,
-          JSON.stringify({
-            type: 'operator',
-            uid: opUser.uid || opUser.id,
-            email: opUser.email,
-            identifier: cleanIdentifier,
-          })
-        );
+        await storeSessionToken({
+          type: 'operator',
+          uid: opUser.uid || opUser.id,
+          email: opUser.email,
+          identifier: cleanIdentifier,
+        });
         return 'operator';
       }
 
@@ -315,15 +488,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCandidate(cand);
         setOperator(null);
 
-        localStorage.setItem(
-          SESSION_STORAGE_KEY,
-          JSON.stringify({
-            type: 'candidate',
-            uid: candUid,
-            email: cand.email,
-            identifier: cleanIdentifier,
-          })
-        );
+        await storeSessionToken({
+          type: 'candidate',
+          uid: candUid,
+          email: cand.email,
+          identifier: cleanIdentifier,
+        });
         return 'candidate';
       }
 
@@ -341,15 +511,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCandidate(null);
         setOperator(null);
 
-        localStorage.setItem(
-          SESSION_STORAGE_KEY,
-          JSON.stringify({
-            type: 'admin',
-            uid: adminProfile.uid,
-            email: adminProfile.email,
-            identifier: cleanIdentifier,
-          })
-        );
+        await storeSessionToken({
+          type: 'admin',
+          uid: adminProfile.uid,
+          email: adminProfile.email,
+          identifier: cleanIdentifier,
+        });
 
         if (adminProfile.uid === 'admin-rasel-master' || adminProfile.email === 'raselahmed231956@gmail.com') {
           try {
@@ -476,15 +643,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserProfile(userProfileRecord);
       setCandidate(fullCandidate);
 
-      localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({
-          type: 'candidate',
-          uid,
-          email: data.email,
-          identifier: data.email,
-        })
-      );
+      await storeSessionToken({
+        type: 'candidate',
+        uid,
+        email: data.email,
+        identifier: data.email,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -540,15 +704,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCandidate(null);
       setOperator(newOp);
 
-      localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({
-          type: 'operator',
-          uid: newOp.uid,
-          email: newOp.email,
-          identifier: cleanPhone || cleanEmail,
-        })
-      );
+      await storeSessionToken({
+        type: 'operator',
+        uid: newOp.uid,
+        email: newOp.email,
+        identifier: cleanPhone || cleanEmail,
+      });
 
       return newOp;
     } finally {
@@ -589,15 +750,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCandidate(null);
       setHasAdminSetup(true);
 
-      localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({
-          type: 'admin',
-          uid,
-          email,
-          identifier: email,
-        })
-      );
+      await storeSessionToken({
+        type: 'admin',
+        uid,
+        email,
+        identifier: email,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -623,15 +781,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserProfile(profile);
     setCandidate(cand);
 
-    localStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify({
-        type: 'candidate',
-        uid: candUid,
-        email: cand.email,
-        identifier: cand.candidateId || cand.email,
-      })
-    );
+    storeSessionToken({
+      type: 'candidate',
+      uid: candUid,
+      email: cand.email,
+      identifier: cand.candidateId || cand.email,
+    });
   };
 
   const updateCurrentCandidate = (cand: Candidate) => {
@@ -739,21 +894,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setOperator(op);
     setCandidate(null);
 
-    localStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify({
-        type: 'operator',
-        uid: op.uid,
-        email: op.email,
-        identifier: op.email,
-      })
-    );
+    storeSessionToken({
+      type: 'operator',
+      uid: op.uid,
+      email: op.email,
+      identifier: op.email,
+    });
   };
 
   const logout = async () => {
     setIsLoading(true);
     try {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
+      clearSessionToken();
+      clearSvpiSession();
       try {
         await signOut(auth);
       } catch {
@@ -844,6 +997,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         hasAdminSetup,
         login,
+        loginWithGoogle,
         loginCandidateDirect,
         loginOperatorDirect,
         updateCurrentCandidate,
@@ -857,6 +1011,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshOperatorData,
         deductOperatorCredit,
         checkAdminExistence,
+        svpiSessionToken,
+        svpiCandidateData,
+        setSvpiSessionToken,
+        clearSvpiSession,
       }}
     >
       {children}
